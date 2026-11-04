@@ -286,6 +286,15 @@ def option(key: str, *param_decls: str, help: str = "", **kwargs: Any):
     )
 
 
+def interactive_option(help: str):
+    return click.option(
+        "-i/-I",
+        "--interactive/--no-interactive",
+        default=None,
+        help=f"{help}  [config: interactive]",
+    )
+
+
 def in_terminal() -> bool:
     return sys.stdin.isatty() and sys.stdout.isatty()
 

@@ -15,8 +15,22 @@ You also need the [GitHub CLI](https://cli.github.com/) (`gh`) logged in for PR 
 ```bash
 decky config init
 # Edit ~/.config/decky/config.toml: set review.command, pr.dir, browser.command
-decky pr list -i   # lands in a later release layer
+decky pr list -i
 ```
+
+## `decky pr list`
+
+Lists pull requests in three buckets: review requests for you, team review requests, and your open PRs.
+
+```bash
+decky pr list          # table, default filters
+decky pr list --all    # include drafts, failing checks, hidden authors
+decky pr list -i       # TTY picker (Enter starts review, o opens URL, tab cycles lists)
+decky pr list -m       # your PRs
+decky pr list -t       # team requests only
+```
+
+Default filters hide drafts, PRs whose checks are not `pass`, and authors listed in `pr.hide_authors` (default includes `renovate`). Use `--all` or press `a` in the picker to show them.
 
 Override the config path with `DECKY_CONFIG`.
 
