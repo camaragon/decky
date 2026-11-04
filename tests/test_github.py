@@ -1,0 +1,125 @@
+"""GraphQL list loading and bucketing."""
+
+from __future__ import annotations
+
+import json
+import subprocess
+
+import click
+import pytest
+
+from decky import github
+
+
+def _node(
+    repo: str,
+    number: int,
+    *,
+    state: str | None = "SUCCESS",
+    draft: bool = False,
+    author: str = "dev",
+    user_request: bool = True,
+    team_request: bool = False,
+    approvals: int = 0,
+) -> dict:
+    reviews = [{"state": "APPROVED"}] * approvals
+    requests = []
+    if user_request:
+        requests.append({"requestedReviewer": {"login": "viewer"}})
+    if team_request:
+        requests.append({"requestedReviewer": {"slug": "eng"}})
+    return {
+        "number": number,
+        "title": f"t{number}",
+        "isDraft": draft,
+        "author": {"login": author},
+        "repository": {"nameWithOwner": repo},
+        "commits": {
+            "nodes": [{"commit": {"statusCheckRollup": {"state": state} if state else None}}]
+        },
+        "latestOpinionatedReviews": {"nodes": reviews},
+        "reviewRequests": {"pageInfo": {"hasNextPage": False}, "nodes": requests},
+    }
+
+
+def test_buckets_user_before_team(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = {
+        "data": {
+            "viewer": {
+                "login": "viewer",
+                "pullRequests": {"pageInfo": {"hasNextPage": False}, "nodes": []},
+            },
+            "reviewSearch": {
+                "pageInfo": {"hasNextPage": False},
+                "nodes": [
+                    _node("o/r", 1, user_request=True, team_request=True),
+                    _node("o/r", 2, user_request=False, team_request=True),
+                ],
+            },
+        }
+    }
+    monkeypatch.setattr(
+        github,
+        "run_gh",
+        lambda *a: subprocess.CompletedProcess([], 0, stdout=json.dumps(payload)),
+    )
+    lists, _ = github.load_pr_lists()
+    assert [p["number"] for p in lists["review"]] == [1]
+    assert [p["number"] for p in lists["team"]] == [2]
+
+
+def test_mine_from_viewer(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = {
+        "data": {
+            "viewer": {
+                "login": "viewer",
+                "pullRequests": {
+                    "pageInfo": {"hasNextPage": False},
+                    "nodes": [_node("me/w", 3, user_request=False, team_request=False)],
+                },
+            },
+            "reviewSearch": {"pageInfo": {"hasNextPage": False}, "nodes": []},
+        }
+    }
+    monkeypatch.setattr(
+        github,
+        "run_gh",
+        lambda *a: subprocess.CompletedProcess([], 0, stdout=json.dumps(payload)),
+    )
+    lists, _ = github.load_pr_lists()
+    assert [p["number"] for p in lists["mine"]] == [3]
+
+
+def test_truncation_note(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = {
+        "data": {
+            "viewer": {
+                "login": "v",
+                "pullRequests": {"pageInfo": {"hasNextPage": True}, "nodes": []},
+            },
+            "reviewSearch": {"pageInfo": {"hasNextPage": False}, "nodes": []},
+        }
+    }
+    monkeypatch.setattr(
+        github,
+        "run_gh",
+        lambda *a: subprocess.CompletedProcess([], 0, stdout=json.dumps(payload)),
+    )
+    _, notes = github.load_pr_lists()
+    assert "list truncated at GitHub page size" in notes
+
+
+def test_retry_then_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    bad = subprocess.CompletedProcess([], 1, stderr="rate limit exceeded")
+    good = subprocess.CompletedProcess([], 0, stdout="ok")
+    calls: list[int] = []
+
+    def run(cmd: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
+        calls.append(1)
+        return bad if len(calls) == 1 else good
+
+    slept: list[float] = []
+    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(github.time, "sleep", slept.append)
+    assert github.run_gh("api", "graphql").stdout == "ok"
+    assert slept == [2]
