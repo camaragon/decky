@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import click
 
-from decky import config, github, tui
+from decky import config, github, review, tui
+from decky.terminal import get_backend
 
 KINDS = ("review", "team", "mine")
 EMPTY = {
@@ -26,7 +29,24 @@ def pr_url(slug: str, number: int) -> str:
 
 
 def open_review(slug: str, number: int) -> None:
-    raise click.ClickException("pr review lands in the next stack layer")
+    command_template, _ = config.resolve("review.command")
+    if not command_template:
+        raise click.UsageError("set review.command (see decky config init)")
+    short = slug.rsplit("/", 1)[-1]
+    name = f"pr-{short}-{number}"
+    parent, _ = config.resolve("pr.dir")
+    dest_root = Path(parent or ".").expanduser().resolve()
+    terminal, _ = config.resolve("terminal")
+    backend = get_backend(terminal or "tmux")
+    url = pr_url(slug, number)
+    if backend.focus_existing(name, url):
+        click.echo(f"switched to open {name}")
+        return
+    dest_root.mkdir(parents=True, exist_ok=True)
+    dest = dest_root / short
+    github.clone_or_reuse(slug, dest)
+    command = review.interpolate(command_template, slug=slug, number=number, dest=dest)
+    backend.open(name, dest, command, url)
 
 
 def hidden_authors() -> list[str]:
@@ -108,7 +128,7 @@ def pr() -> None:
 @click.argument("number", type=int)
 @config.option("work_org", "--org", help="GitHub owner when REPO has no owner.")
 def review(repo: str, number: int, org: str | None) -> None:
-    """Open a review workspace for REPO NUMBER."""
+    """Open or focus a review workspace for REPO NUMBER."""
     open_review(github.repo_slug(repo, org), number)
 
 

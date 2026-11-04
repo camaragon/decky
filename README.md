@@ -32,6 +32,19 @@ decky pr list -t       # team requests only
 
 Default filters hide drafts, PRs whose checks are not `pass`, and authors listed in `pr.hide_authors` (default includes `renovate`). Use `--all` or press `a` in the picker to show them.
 
+## `decky pr review`
+
+Opens or focuses a tmux window (default) or cmux workspace named `pr-<repo>-<number>`, runs `review.command`, and on the tmux path runs `browser.command` with the PR URL.
+
+```bash
+decky pr review owner/repo 123
+decky pr r my-repo 5    # requires work_org when REPO has no slash
+```
+
+Checkout directory: `pr.dir/<repo-short>` (reused when origin matches; no `gh pr checkout`).
+
+`terminal = "tmux"` is the default. Windows live in session `decky`, or the current tmux session when `$TMUX` is set. Set `terminal = "cmux"` to use cmux instead (`browser.command` is ignored on that path).
+
 Override the config path with `DECKY_CONFIG`.
 
 ## Config

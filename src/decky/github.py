@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 import time
+from pathlib import Path
 from typing import Any
 
 import click
@@ -172,6 +173,36 @@ def load_pr_lists() -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
         },
         notes,
     )
+
+
+def clone(slug: str, dest: Path) -> int:
+    cmd = ["git", "clone", "--recurse-submodules", f"git@github.com:{slug}.git", str(dest)]
+    return subprocess.run(cmd).returncode
+
+
+def remote_matches(dest: Path, slug: str) -> bool:
+    result = subprocess.run(
+        ["git", "-C", str(dest), "remote", "get-url", "origin"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return False
+    url = result.stdout.strip().lower().removesuffix(".git")
+    slug = slug.lower()
+    return url.endswith(f":{slug}") or url.endswith(f"/{slug}")
+
+
+def clone_or_reuse(slug: str, dest: Path) -> None:
+    if dest.exists():
+        if remote_matches(dest, slug):
+            click.echo(f"using existing checkout {dest}")
+            return
+        raise click.ClickException(f"{dest} exists and is not {slug}")
+    code = clone(slug, dest)
+    if code != 0:
+        raise click.exceptions.Exit(code)
 
 
 def repo_slug(name: str, org: str | None) -> str:

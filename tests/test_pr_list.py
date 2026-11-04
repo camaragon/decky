@@ -101,7 +101,14 @@ def test_interactive_open(monkeypatch: pytest.MonkeyPatch, runner: CliRunner) ->
     assert reviews == [("acme/web-app", 1234)]
 
 
-def test_open_review_placeholder(runner: CliRunner) -> None:
-    result = runner.invoke(cli, ["pr", "review", "acme/api", "1"])
-    assert result.exit_code != 0
-    assert "next stack layer" in result.output
+def test_review_missing_command(runner: CliRunner, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        pr_cmd.config,
+        "resolve",
+        lambda key: (None, "unset"),
+    )
+    clone = []
+    monkeypatch.setattr(pr_cmd.github, "clone_or_reuse", lambda *a: clone.append(1))
+    result = runner.invoke(cli, ["pr", "review", "o/r", "1", "--org", "ignored"])
+    assert result.exit_code == 2
+    assert clone == []
