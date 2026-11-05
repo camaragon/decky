@@ -47,6 +47,18 @@ Checkout directory: `pr.dir/<repo-short>` (reused when origin matches; no `gh pr
 
 Override the config path with `DECKY_CONFIG`.
 
+## `decky server`
+
+Local web UI at `http://127.0.0.1:8777` (FastAPI + React). Review buttons use `review.command`. Optional `queue.command` prints `{today, mine, direct, team}` JSON for the PR queue sections; optional `jira.browse_url` links ticket keys.
+
+```bash
+pnpm -C web install && pnpm -C web build   # dev; git/wheel installs build the SPA automatically
+decky server
+decky server --no-open --dev               # API only; use pnpm -C web dev for the SPA
+```
+
+Optional `status.command` prints JSON with `waiting` and `running` lists (`title` and `url` per item) for the waiting strip.
+
 ## Config
 
 `decky config path` — print the file path  
@@ -72,6 +84,10 @@ Default file: `~/.config/decky/config.toml` (mode `600` on write).
 | `browser.command` | `DECKY_BROWSER_COMMAND` | Opens PR URL on tmux path |
 | `cmux.bin` | `DECKY_CMUX_BIN` | cmux binary |
 | `cmux.group` | `DECKY_CMUX_GROUP` | Workspace group (cmux path) |
+| `server.host` | `DECKY_SERVER_HOST` | Bind address (default `127.0.0.1`) |
+| `server.port` | `DECKY_SERVER_PORT` | Listen port (default `8777`) |
+| `server.log_level` | `DECKY_SERVER_LOG_LEVEL` | App log level (`debug` … `error`) |
+| `status.command` | `DECKY_STATUS_COMMAND` | Optional argv printing waiting/running JSON |
 
 Example (also written by `decky config init`):
 

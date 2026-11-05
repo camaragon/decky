@@ -25,6 +25,7 @@ class Setting:
     help: str
     default: Any = None
     kind: str = "str"  # str | bool | path | list_str | choice
+    choices: tuple[str, ...] | None = None
 
 
 SETTINGS: dict[str, Setting] = {
@@ -76,11 +77,37 @@ SETTINGS: dict[str, Setting] = {
             "Optional Jira issue URL template with {key} for queue Jira links",
         ),
         Setting(
+            "status.command",
+            "DECKY_STATUS_COMMAND",
+            "Argv command that prints waiting/running JSON (optional)",
+        ),
+        Setting(
+            "server.host",
+            "DECKY_SERVER_HOST",
+            "Address decky server binds to",
+            "127.0.0.1",
+        ),
+        Setting(
+            "server.port",
+            "DECKY_SERVER_PORT",
+            "Port decky server listens on",
+            "8777",
+        ),
+        Setting(
+            "server.log_level",
+            "DECKY_SERVER_LOG_LEVEL",
+            "Log level for decky loggers",
+            "warning",
+            kind="choice",
+            choices=("debug", "info", "warning", "error"),
+        ),
+        Setting(
             "terminal",
             "DECKY_TERMINAL",
             "Review surface backend",
             "tmux",
             kind="choice",
+            choices=("tmux", "cmux"),
         ),
         Setting("tmux.bin", "DECKY_TMUX_BIN", "Path to tmux", kind="path"),
         Setting("tmux.session", "DECKY_TMUX_SESSION", "tmux session for PR windows"),
@@ -217,8 +244,9 @@ def parse_set_value(key: str, raw: str) -> Any:
     if s.kind == "list_str":
         return _parse_env_list(raw)
     if s.kind == "choice":
-        if raw not in TERMINAL_CHOICES:
-            raise click.BadParameter(f"{key} must be one of {', '.join(TERMINAL_CHOICES)}")
+        allowed = s.choices or TERMINAL_CHOICES
+        if raw not in allowed:
+            raise click.BadParameter(f"{key} must be one of {', '.join(allowed)}")
         return raw
     return raw
 
@@ -280,6 +308,14 @@ command = "your-review-agent {url}"
 [browser]
 command = "open -a Dia {url}"
 # command = "open {url}"
+
+# [status]
+# command = "your-status-command"
+
+# [server]
+# host = "127.0.0.1"
+# port = "8777"
+# log_level = "warning"
 
 # [tmux]
 # session = "decky"

@@ -21,7 +21,16 @@ FORBIDDEN = (
 def test_tree_is_public_safe() -> None:
     root = Path(__file__).resolve().parents[1]
     this = Path(__file__).resolve()
-    skip_dirs = {".git", ".venv", "dist", "__pycache__", ".pytest_cache"}
+    skip_dirs = {
+        ".git",
+        ".venv",
+        "dist",
+        "__pycache__",
+        ".pytest_cache",
+        "node_modules",
+        "web/dist",
+        "src/decky/server/static",
+    }
     for path in root.rglob("*"):
         if any(part in skip_dirs for part in path.parts):
             continue

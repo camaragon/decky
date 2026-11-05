@@ -32,6 +32,7 @@ def _node(
         "number": number,
         "title": f"t{number}",
         "isDraft": draft,
+        "updatedAt": "2026-01-01T00:00:00Z",
         "author": {"login": author},
         "repository": {"nameWithOwner": repo},
         "commits": {
@@ -107,6 +108,39 @@ def test_truncation_note(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     _, notes = github.load_pr_lists()
     assert "list truncated at GitHub page size" in notes
+
+
+def test_watch_repo_search_merged(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = {
+        "data": {
+            "viewer": {
+                "login": "viewer",
+                "pullRequests": {"pageInfo": {"hasNextPage": False}, "nodes": []},
+            },
+            "reviewSearch": {"pageInfo": {"hasNextPage": False}, "nodes": []},
+            "watchRepo0": {
+                "pageInfo": {"hasNextPage": False},
+                "nodes": [_node("acme/api", 5, author="other", user_request=False, team_request=False)],
+            },
+        }
+    }
+
+    def fake_run(*args: str) -> subprocess.CompletedProcess[str]:
+        assert "watchRepo0" in args[-1]
+        return subprocess.CompletedProcess([], 0, stdout=json.dumps(payload))
+
+    monkeypatch.setattr(github, "run_gh", fake_run)
+    monkeypatch.setattr(
+        github.config,
+        "resolve",
+        lambda key: (
+            (["acme/api"], "file")
+            if key == "pr.watch_repos"
+            else (([], "default") if key == "pr.watch_teams" else (None, "unset"))
+        ),
+    )
+    lists, _ = github.load_pr_lists()
+    assert [p["number"] for p in lists["review"]] == [5]
 
 
 def test_retry_then_success(monkeypatch: pytest.MonkeyPatch) -> None:

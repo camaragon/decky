@@ -10,6 +10,8 @@ from typing import Any
 
 import click
 
+from decky import config
+
 RETRY_DELAYS = (2, 4, 8, 16)
 RETRYABLE = (
     "rate limit",
@@ -28,11 +30,14 @@ CHECK_STATES = {
     "EXPECTED": "pending",
 }
 
-GRAPHQL = """
+MAX_WATCH = 15
+
+PR_FIELDS = """
 fragment PrFields on PullRequest {
   number
   title
   isDraft
+  updatedAt
   author { login }
   repository { nameWithOwner }
   commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
@@ -42,24 +47,59 @@ fragment PrFields on PullRequest {
     nodes { requestedReviewer { ... on User { login } ... on Team { slug } } }
   }
 }
+"""
 
-query DeckyPrLists {
-  viewer {
+SEARCH_NODES = """
+    pageInfo { hasNextPage }
+    nodes { ... on PullRequest { ...PrFields } }
+"""
+
+
+def _list_setting(key: str) -> list[str]:
+    value, _ = config.resolve(key)
+    if not value:
+        return []
+    if isinstance(value, list):
+        return [str(v).strip() for v in value if str(v).strip()]
+    return []
+
+
+def _escape_query(q: str) -> str:
+    return q.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def build_graphql(watch_teams: list[str], watch_repos: list[str]) -> str:
+    extra = ""
+    for i, team in enumerate(watch_teams[:MAX_WATCH]):
+        q = _escape_query(f"is:pr is:open archived:false team-review-requested:{team}")
+        extra += f"""
+  watchTeam{i}: search(query: "{q}", type: ISSUE, first: 50) {{{SEARCH_NODES}
+  }}"""
+    for i, repo in enumerate(watch_repos[:MAX_WATCH]):
+        q = _escape_query(
+            f"repo:{repo} is:pr is:open archived:false -author:@me -reviewed-by:@me"
+        )
+        extra += f"""
+  watchRepo{i}: search(query: "{q}", type: ISSUE, first: 50) {{{SEARCH_NODES}
+  }}"""
+    return f"""
+{PR_FIELDS}
+
+query DeckyPrLists {{
+  viewer {{
     login
-    pullRequests(first: 50, states: OPEN) {
-      pageInfo { hasNextPage }
-      nodes { ...PrFields }
-    }
-  }
+    pullRequests(first: 50, states: OPEN) {{
+      pageInfo {{ hasNextPage }}
+      nodes {{ ...PrFields }}
+    }}
+  }}
   reviewSearch: search(
     query: "is:pr is:open archived:false review-requested:@me"
     type: ISSUE
     first: 50
-  ) {
-    pageInfo { hasNextPage }
-    nodes { ... on PullRequest { ...PrFields } }
-  }
-}
+  ) {{{SEARCH_NODES}
+  }}{extra}
+}}
 """
 
 
@@ -99,6 +139,7 @@ def pr_from_node(node: dict[str, Any]) -> dict[str, Any]:
         "approvals": sum(1 for r in reviews if r and r.get("state") == "APPROVED"),
         "draft": bool(node.get("isDraft")),
         "author": (node.get("author") or {}).get("login") or "",
+        "updated_at": node.get("updatedAt") or "",
         "review_requests_truncated": bool(
             ((node.get("reviewRequests") or {}).get("pageInfo") or {}).get("hasNextPage")
         ),
@@ -124,9 +165,23 @@ def _classify_review(node: dict[str, Any], viewer_login: str) -> str | None:
     return None
 
 
+def _note_truncation(notes: list[str], page_info: dict[str, Any] | None) -> None:
+    if (page_info or {}).get("hasNextPage"):
+        note = "list truncated at GitHub page size"
+        if note not in notes:
+            notes.append(note)
+
+
+def _row_key(row: dict[str, Any]) -> tuple[str, int]:
+    return (row["repo"], row["number"])
+
+
 def load_pr_lists() -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
     """Load review, team, and mine lists; return notes for truncation."""
-    result = run_gh("api", "graphql", "-f", f"query={GRAPHQL}")
+    watch_teams = _list_setting("pr.watch_teams")
+    watch_repos = _list_setting("pr.watch_repos")
+    query = build_graphql(watch_teams, watch_repos)
+    result = run_gh("api", "graphql", "-f", f"query={query}")
     if result.returncode != 0:
         raise click.ClickException(f"gh api graphql failed: {result.stderr.strip()}")
     try:
@@ -139,30 +194,73 @@ def load_pr_lists() -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
     notes: list[str] = []
 
     mine_page = (viewer.get("pullRequests") or {}).get("pageInfo") or {}
-    if mine_page.get("hasNextPage"):
-        notes.append("list truncated at GitHub page size")
+    _note_truncation(notes, mine_page)
     search_page = (data.get("reviewSearch") or {}).get("pageInfo") or {}
-    if search_page.get("hasNextPage"):
-        notes.append("list truncated at GitHub page size")
+    _note_truncation(notes, search_page)
 
     mine_nodes = (viewer.get("pullRequests") or {}).get("nodes") or []
     mine = [pr_from_node(n) for n in mine_nodes if n]
     if any(p.pop("review_requests_truncated", False) for p in mine):
-        notes.append("list truncated at GitHub page size")
+        _note_truncation(notes, {"hasNextPage": True})
 
     review: list[dict[str, Any]] = []
     team: list[dict[str, Any]] = []
+    review_keys: set[tuple[str, int]] = set()
+    team_keys: set[tuple[str, int]] = set()
+
+    def add_row(row: dict[str, Any], bucket: str) -> None:
+        key = _row_key(row)
+        truncated = row.pop("review_requests_truncated", False)
+        if truncated:
+            _note_truncation(notes, {"hasNextPage": True})
+        if bucket == "review":
+            if key in review_keys:
+                return
+            review_keys.add(key)
+            team_keys.discard(key)
+            team[:] = [p for p in team if _row_key(p) != key]
+            review.append(row)
+        else:
+            if key in review_keys:
+                return
+            if key in team_keys:
+                return
+            team_keys.add(key)
+            team.append(row)
+
     for node in (data.get("reviewSearch") or {}).get("nodes") or []:
         if not node:
             continue
         row = pr_from_node(node)
-        if row.pop("review_requests_truncated", False):
-            notes.append("list truncated at GitHub page size")
         kind = _classify_review(node, login)
         if kind == "review":
-            review.append(row)
+            add_row(row, "review")
         elif kind == "team":
-            team.append(row)
+            add_row(row, "team")
+
+    for i, _team in enumerate(watch_teams[:MAX_WATCH]):
+        block = data.get(f"watchTeam{i}") or {}
+        _note_truncation(notes, block.get("pageInfo"))
+        for node in block.get("nodes") or []:
+            if not node:
+                continue
+            row = pr_from_node(node)
+            kind = _classify_review(node, login)
+            if kind == "review":
+                add_row(row, "review")
+            else:
+                add_row(row, "team")
+
+    for i, _repo in enumerate(watch_repos[:MAX_WATCH]):
+        block = data.get(f"watchRepo{i}") or {}
+        _note_truncation(notes, block.get("pageInfo"))
+        for node in block.get("nodes") or []:
+            if not node:
+                continue
+            row = pr_from_node(node)
+            if same_login(row["author"], login):
+                continue
+            add_row(row, "review")
 
     sort_key = lambda pr: (pr["repo"], pr["number"])
     return (
