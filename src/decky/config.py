@@ -47,9 +47,33 @@ SETTINGS: dict[str, Setting] = {
             kind="list_str",
         ),
         Setting(
+            "pr.watch_teams",
+            "DECKY_PR_WATCH_TEAMS",
+            "Team slugs (org/team) whose review requests appear in the team list",
+            "[]",
+            kind="list_str",
+        ),
+        Setting(
+            "pr.watch_repos",
+            "DECKY_PR_WATCH_REPOS",
+            "Repos (owner/name) whose open PRs appear as review candidates",
+            "[]",
+            kind="list_str",
+        ),
+        Setting(
             "review.command",
             "DECKY_REVIEW_COMMAND",
             "Command template for the review pane (required for pr review)",
+        ),
+        Setting(
+            "queue.command",
+            "DECKY_QUEUE_COMMAND",
+            "Argv command that prints PR queue JSON (today, mine, direct, team)",
+        ),
+        Setting(
+            "jira.browse_url",
+            "DECKY_JIRA_BROWSE_URL",
+            "Optional Jira issue URL template with {key} for queue Jira links",
         ),
         Setting(
             "terminal",
@@ -238,11 +262,20 @@ terminal = "tmux"
 
 [pr]
 dir = "~/prs"
+# Extra review sources when GitHub team membership does not cover you:
+# watch_teams = ["acme-corp/platform", "acme-corp/security"]
+# watch_repos = ["acme-corp/api", "acme-corp/web"]
 
 [review]
 # Required before `decky pr review` or Enter in the list.
 # Placeholders: {slug} {owner} {repo} {number} {url} {cwd}
 command = "your-review-agent {url}"
+
+# [queue]
+# command = "your-queue-script"
+
+# [jira]
+# browse_url = "https://tracker.example/browse/{key}"
 
 [browser]
 command = "open -a Dia {url}"

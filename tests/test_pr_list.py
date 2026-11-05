@@ -101,6 +101,22 @@ def test_interactive_open(monkeypatch: pytest.MonkeyPatch, runner: CliRunner) ->
     assert reviews == [("acme/web-app", 1234)]
 
 
+def test_interactive_mine_open_review(monkeypatch: pytest.MonkeyPatch, runner: CliRunner) -> None:
+    lists = {"review": [], "team": [], "mine": PRS}
+    monkeypatch.setattr(pr_cmd, "fetch_lists", lambda: (lists, []))
+    picks = [("open", 0)]
+    monkeypatch.setattr(
+        tui,
+        "choose",
+        lambda rows, index=0, hint="", actions=(): picks.pop(0),
+    )
+    reviews: list[tuple[str, int]] = []
+    monkeypatch.setattr(pr_cmd, "open_review", lambda slug, n: reviews.append((slug, n)))
+    result = runner.invoke(cli, ["pr", "ls", "-i", "-m", "--all"])
+    assert result.exit_code == 0
+    assert reviews == [("acme/api", 7)]
+
+
 def test_review_missing_command(runner: CliRunner, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         pr_cmd.config,
