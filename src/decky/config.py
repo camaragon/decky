@@ -72,6 +72,18 @@ SETTINGS: dict[str, Setting] = {
             "Argv command that prints PR queue JSON (today, mine, direct, team)",
         ),
         Setting(
+            "queue.timeout",
+            "DECKY_QUEUE_TIMEOUT",
+            "Seconds to wait for queue.command stdout",
+            "30",
+        ),
+        Setting(
+            "queue.max_stdout",
+            "DECKY_QUEUE_MAX_STDOUT",
+            "Maximum queue.command stdout size in bytes",
+            "1048576",
+        ),
+        Setting(
             "jira.browse_url",
             "DECKY_JIRA_BROWSE_URL",
             "Optional Jira issue URL template with {key} for queue Jira links",
@@ -301,6 +313,8 @@ command = "your-review-agent {url}"
 
 # [queue]
 # command = "your-queue-script"
+# timeout = "30"
+# max_stdout = "1048576"
 
 # [jira]
 # browse_url = "https://tracker.example/browse/{key}"

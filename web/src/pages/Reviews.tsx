@@ -51,10 +51,14 @@ export function ReviewsPage() {
 
   const jiraBrowseUrl = meta.data?.jiraBrowseUrl ?? null;
 
-  if (useQueueSource && queueActive(queue.data)) {
-    const today = queue.data.today;
-    const direct = queue.data.direct.map((item) => queueToRow(item, true));
-    const teamRows = queue.data.team.map((item) => queueToRow(item, true));
+  if (useQueueSource) {
+    const today = queueActive(queue.data) ? queue.data.today : "";
+    const direct = queueActive(queue.data)
+      ? queue.data.direct.map((item) => queueToRow(item, true))
+      : [];
+    const teamRows = queueActive(queue.data)
+      ? queue.data.team.map((item) => queueToRow(item, true))
+      : [];
     return (
       <div>
         <div className="mb-2 flex items-center justify-between gap-2">
@@ -64,30 +68,40 @@ export function ReviewsPage() {
           </Button>
         </div>
         <PrFilterBar filters={filters} onChange={setFilters} onReset={() => setFilters(defaultFilters())} />
-        <PrSection
-          title="Requested from me"
-          rows={direct}
-          hideAuthors={hideAuthors}
-          filters={filters}
-          empty={EMPTY.direct}
-          reviewAction
-          showReviewed
-          queueMode
-          jiraBrowseUrl={jiraBrowseUrl}
-          queueToday={today}
-        />
-        <PrSection
-          title="Via team"
-          rows={teamRows}
-          hideAuthors={hideAuthors}
-          filters={filters}
-          empty={EMPTY.team}
-          reviewAction
-          showReviewed
-          queueMode
-          jiraBrowseUrl={jiraBrowseUrl}
-          queueToday={today}
-        />
+        {queue.isLoading && !queueActive(queue.data) ? (
+          <p className="py-2 text-xs text-muted-foreground">Loading queue…</p>
+        ) : null}
+        {queue.error ? (
+          <p className="py-2 text-xs text-red-600 dark:text-red-400">{String(queue.error)}</p>
+        ) : null}
+        {queueActive(queue.data) ? (
+          <>
+            <PrSection
+              title="Requested from me"
+              rows={direct}
+              hideAuthors={hideAuthors}
+              filters={filters}
+              empty={EMPTY.direct}
+              reviewAction
+              showReviewed
+              queueMode
+              jiraBrowseUrl={jiraBrowseUrl}
+              queueToday={today}
+            />
+            <PrSection
+              title="Via team"
+              rows={teamRows}
+              hideAuthors={hideAuthors}
+              filters={filters}
+              empty={EMPTY.team}
+              reviewAction
+              showReviewed
+              queueMode
+              jiraBrowseUrl={jiraBrowseUrl}
+              queueToday={today}
+            />
+          </>
+        ) : null}
       </div>
     );
   }

@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from decky.server.api import ActionFailed, State, router
+from decky.server import mcp as mcp_mod
 
 log = logging.getLogger(__name__)
 
@@ -20,18 +21,19 @@ STATIC = Path(__file__).parent / "static"
 MISSING = "the web app is not built; run `pnpm -C web install && pnpm -C web build`"
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    yield
-
-
 def create_app(
     state: State | None = None,
     static: Path | None = STATIC,
     host: str = "127.0.0.1",
 ) -> FastAPI:
-    """Build the decky server app. MCP routes are added in layer v2/mcp."""
+    """Build the decky server app including /mcp tools."""
     decky_state = state or State(listen_host=host)
+    tools = mcp_mod.build(decky_state)
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        async with tools.session_manager.run():
+            yield
 
     app = FastAPI(
         title="decky",
@@ -60,6 +62,7 @@ def create_app(
         return JSONResponse({"message": problems or "bad input"}, status_code=400)
 
     app.include_router(router)
+    app.router.routes.extend(mcp_mod.routes(tools, host))
 
     if static is not None:
 
