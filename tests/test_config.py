@@ -89,6 +89,20 @@ def test_watch_teams_and_repos_lists(isolated_config: Path, runner: CliRunner) -
     assert repos == ["acme/api", "acme/web"]
 
 
+def test_server_log_level_choice(isolated_config: Path, runner: CliRunner) -> None:
+    ok = runner.invoke(cli, ["config", "set", "server.log_level", "warning"])
+    assert ok.exit_code == 0
+    bad = runner.invoke(cli, ["config", "set", "server.log_level", "tmux"])
+    assert bad.exit_code != 0
+
+
+def test_init_has_status_placeholder(isolated_config: Path, runner: CliRunner) -> None:
+    result = runner.invoke(cli, ["config", "init"])
+    text = isolated_config.read_text(encoding="utf-8")
+    assert "your-status-command" in text
+    assert "your-queue-script" in text
+
+
 def test_decky_config_path_env(isolated_config: Path, runner: CliRunner) -> None:
     result = runner.invoke(cli, ["config", "path"])
     assert result.output.strip() == str(isolated_config)

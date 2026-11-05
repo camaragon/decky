@@ -6,6 +6,7 @@ import click
 
 from decky.commands.config import config_group
 from decky.commands.pr import pr
+from decky.commands.server import server_cmd
 
 
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
@@ -15,6 +16,7 @@ def cli() -> None:
 
 cli.add_command(config_group)
 cli.add_command(pr)
+cli.add_command(server_cmd)
 
 
 def main() -> None:
