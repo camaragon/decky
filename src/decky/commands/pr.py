@@ -6,7 +6,8 @@ from pathlib import Path
 
 import click
 
-from decky import config, github, review, tui
+from decky import config, github, tui
+from decky import review as review_tpl
 from decky.terminal import get_backend
 
 KINDS = ("review", "team", "mine")
@@ -28,12 +29,12 @@ def pr_url(slug: str, number: int) -> str:
     return f"https://github.com/{slug}/pull/{number}"
 
 
-def open_review(slug: str, number: int) -> None:
-    command_template, _ = config.resolve("review.command")
+def open_pr_action(template_key: str, name_prefix: str, slug: str, number: int) -> None:
+    command_template, _ = config.resolve(template_key)
     if not command_template:
-        raise click.UsageError("set review.command (see decky config init)")
+        raise click.UsageError(f"set {template_key} (see decky config init)")
     short = slug.rsplit("/", 1)[-1]
-    name = f"pr-{short}-{number}"
+    name = f"{name_prefix}-{short}-{number}"
     parent, _ = config.resolve("pr.dir")
     dest_root = Path(parent or ".").expanduser().resolve()
     terminal, _ = config.resolve("terminal")
@@ -45,8 +46,12 @@ def open_review(slug: str, number: int) -> None:
     dest_root.mkdir(parents=True, exist_ok=True)
     dest = dest_root / short
     github.clone_or_reuse(slug, dest)
-    command = review.interpolate(command_template, slug=slug, number=number, dest=dest)
+    command = review_tpl.interpolate(command_template, slug=slug, number=number, dest=dest)
     backend.open(name, dest, command, url)
+
+
+def open_review(slug: str, number: int) -> None:
+    open_pr_action("review.command", "pr", slug, number)
 
 
 def hidden_authors() -> list[str]:
@@ -133,7 +138,9 @@ def review(repo: str, number: int, org: str | None) -> None:
 
 
 @pr.command(name="list")
-@config.interactive_option("Select a PR; Enter reviews, o opens the URL, tab cycles lists, a toggles --all.")
+@config.interactive_option(
+    "Select a PR; Enter review, o opens the URL, tab cycles lists, a toggles --all."
+)
 @click.option("-a", "--all", "show_all", is_flag=True, help="Show drafts, failing checks, and hidden authors.")
 @click.option("-m", "--mine", is_flag=True, help="List PRs you opened.")
 @click.option("-t", "--team", is_flag=True, help="List team review requests.")

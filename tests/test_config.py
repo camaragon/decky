@@ -31,7 +31,15 @@ def test_init_writes_placeholder_command(isolated_config: Path, runner: CliRunne
     assert result.exit_code == 0
     text = isolated_config.read_text(encoding="utf-8")
     assert "your-review-agent {url}" in text
+    assert "your-queue-script" in text
     assert "claude" not in text.lower() or "your-review-agent" in text
+
+
+def test_set_queue_command(isolated_config: Path, runner: CliRunner) -> None:
+    runner.invoke(cli, ["config", "set", "queue.command", "echo-json"])
+    value, source = config.resolve("queue.command")
+    assert value == "echo-json"
+    assert source == "file"
 
 
 def test_init_refuses_existing(isolated_config: Path, runner: CliRunner) -> None:
@@ -70,6 +78,15 @@ def test_hide_authors_list(isolated_config: Path, runner: CliRunner) -> None:
     runner.invoke(cli, ["config", "set", "pr.hide_authors", "bot1,bot2"])
     value, _ = config.resolve("pr.hide_authors")
     assert value == ["bot1", "bot2"]
+
+
+def test_watch_teams_and_repos_lists(isolated_config: Path, runner: CliRunner) -> None:
+    runner.invoke(cli, ["config", "set", "pr.watch_teams", "acme/platform,acme/security"])
+    runner.invoke(cli, ["config", "set", "pr.watch_repos", "acme/api,acme/web"])
+    teams, _ = config.resolve("pr.watch_teams")
+    repos, _ = config.resolve("pr.watch_repos")
+    assert teams == ["acme/platform", "acme/security"]
+    assert repos == ["acme/api", "acme/web"]
 
 
 def test_decky_config_path_env(isolated_config: Path, runner: CliRunner) -> None:

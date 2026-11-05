@@ -11,6 +11,10 @@ FORBIDDEN = (
     "BE_PR_AGENT",
     "PRS_DIR",
     "beverts312",
+    "firstmate",
+    "fm-spawn",
+    "fm-inbox",
+    "FM_HOME",
 )
 
 

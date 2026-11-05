@@ -64,6 +64,8 @@ Default file: `~/.config/decky/config.toml` (mode `600` on write).
 | `pr.dir` | `DECKY_PR_DIR` | Parent directory for checkouts |
 | `pr.hide_authors` | `DECKY_PR_HIDE_AUTHORS` | Hidden logins unless `--all` |
 | `review.command` | `DECKY_REVIEW_COMMAND` | Review pane command template |
+| `queue.command` | `DECKY_QUEUE_COMMAND` | Optional argv printing `{today, mine, direct, team}` JSON for the web UI |
+| `jira.browse_url` | `DECKY_JIRA_BROWSE_URL` | Optional `{key}` URL template for queue Jira links |
 | `terminal` | `DECKY_TERMINAL` | `tmux` (default) or `cmux` |
 | `tmux.bin` | `DECKY_TMUX_BIN` | tmux binary |
 | `tmux.session` | `DECKY_TMUX_SESSION` | Session for PR windows |
