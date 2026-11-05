@@ -42,7 +42,9 @@ export function MyPrsPage() {
   const rows =
     useQueueSource && queueActive(queue.data)
       ? queue.data.mine.map((item) => queueToRow(item, false))
-      : (mine.data?.rows ?? []);
+      : useQueueSource
+        ? []
+        : (mine.data?.rows ?? []);
 
   return (
     <div>
@@ -53,17 +55,25 @@ export function MyPrsPage() {
         </Button>
       </div>
       <PrFilterBar filters={filters} onChange={setFilters} onReset={() => setFilters(defaultFilters())} />
-      <PrSection
-        title="My PRs"
-        rows={rows}
-        hideAuthors={hideAuthors}
-        filters={filters}
-        empty="no open PRs by you"
-        showAuthor={false}
-        queueMode={useQueueSource}
-        jiraBrowseUrl={jiraBrowseUrl}
-        queueToday={queueActive(queue.data) ? queue.data.today : ""}
-      />
+      {useQueueSource && queue.isLoading && !queueActive(queue.data) ? (
+        <p className="py-2 text-xs text-muted-foreground">Loading queue…</p>
+      ) : null}
+      {useQueueSource && queue.error ? (
+        <p className="py-2 text-xs text-red-600 dark:text-red-400">{String(queue.error)}</p>
+      ) : null}
+      {!useQueueSource || queueActive(queue.data) || queue.error ? (
+        <PrSection
+          title="My PRs"
+          rows={rows}
+          hideAuthors={hideAuthors}
+          filters={filters}
+          empty="no open PRs by you"
+          showAuthor={false}
+          queueMode={useQueueSource}
+          jiraBrowseUrl={jiraBrowseUrl}
+          queueToday={queueActive(queue.data) ? queue.data.today : ""}
+        />
+      ) : null}
     </div>
   );
 }

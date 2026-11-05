@@ -75,9 +75,26 @@ def test_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
     def boom(*a, **k):
-        raise TimeoutExpired(cmd="cmd", timeout=5)
+        raise TimeoutExpired(cmd="cmd", timeout=30)
 
     monkeypatch.setattr(queue_mod.subprocess, "run", boom)
     with pytest.raises(Exception) as exc:
         queue_mod.load_queue()
-    assert "timed out" in str(exc.value)
+    assert "timed out after 30s" in str(exc.value)
+
+
+def test_oversize_stdout(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        queue_mod.config,
+        "resolve",
+        lambda key: ("cmd", "file") if key == "queue.command" else (None, "unset"),
+    )
+    big = "x" * (queue_mod.DEFAULT_MAX_STDOUT + 1)
+    monkeypatch.setattr(
+        queue_mod.subprocess,
+        "run",
+        lambda *a, **k: CompletedProcess(args=a[0], returncode=0, stdout=big, stderr=""),
+    )
+    with pytest.raises(Exception) as exc:
+        queue_mod.load_queue()
+    assert "1048576 bytes" in str(exc.value)

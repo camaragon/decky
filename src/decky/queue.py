@@ -12,8 +12,28 @@ import click
 
 from decky import config
 
-MAX_STDOUT = 8192
+DEFAULT_TIMEOUT = 30
+DEFAULT_MAX_STDOUT = 1_048_576
 GITHUB_SLUG = re.compile(r"https://github\.com/([^/]+/[^/]+)/pull/\d+", re.I)
+
+
+def _int_setting(key: str, default: int) -> int:
+    value, _ = config.resolve(key)
+    if value is None:
+        return default
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed > 0 else default
+
+
+def queue_timeout() -> int:
+    return _int_setting("queue.timeout", DEFAULT_TIMEOUT)
+
+
+def queue_max_stdout() -> int:
+    return _int_setting("queue.max_stdout", DEFAULT_MAX_STDOUT)
 
 
 def repo_slug(item: dict[str, Any]) -> str:
@@ -79,23 +99,26 @@ def load_queue() -> dict[str, Any]:
     command, _ = config.resolve("queue.command")
     if not command:
         return {"disabled": True}
+    timeout = queue_timeout()
+    max_stdout = queue_max_stdout()
     argv = shlex.split(str(command))
     try:
         result = subprocess.run(
             argv,
             capture_output=True,
             text=True,
-            timeout=5,
+            timeout=timeout,
             shell=False,
         )
     except subprocess.TimeoutExpired as e:
-        raise click.ClickException("queue.command timed out after 5s") from e
+        raise click.ClickException(f"queue.command timed out after {timeout}s") from e
     if result.returncode != 0:
         err = (result.stderr or result.stdout or "").strip()
         raise click.ClickException(err or f"queue.command exited {result.returncode}")
     stdout = result.stdout or ""
-    if len(stdout.encode("utf-8")) > MAX_STDOUT:
-        raise click.ClickException("queue.command output exceeds 8 KiB")
+    size = len(stdout.encode("utf-8"))
+    if size > max_stdout:
+        raise click.ClickException(f"queue.command output exceeds {max_stdout} bytes")
     try:
         data = json.loads(stdout)
     except json.JSONDecodeError as e:

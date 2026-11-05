@@ -59,6 +59,12 @@ decky server --no-open --dev               # API only; use pnpm -C web dev for t
 
 Optional `status.command` prints JSON with `waiting` and `running` lists (`title` and `url` per item) for the waiting strip.
 
+Connect an MCP client:
+
+```bash
+mcp add --transport http decky http://127.0.0.1:8777/mcp
+```
+
 ## Config
 
 `decky config path` — print the file path  

@@ -52,7 +52,7 @@ function Shell() {
       filterRows(direct, reviewFilters, hideAuthors).length +
       filterRows(teamRows, reviewFilters, hideAuthors).length;
     mineCount = filterRows(mineRows, mineFilters, hideAuthors).length;
-  } else {
+  } else if (!useQueueSource) {
     reviewCount =
       filterRows(review.data?.rows ?? [], reviewFilters, hideAuthors).length +
       filterRows(team.data?.rows ?? [], reviewFilters, hideAuthors).length;
