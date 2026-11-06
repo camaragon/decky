@@ -1,16 +1,21 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { QueryFeedback } from "../components/QueryFeedback";
 
-import { deleteConfig, putConfig } from "../lib/api";
+import { type ConfigSetting, deleteConfig, putConfig } from "../lib/api";
 import { useConfig } from "../hooks/useConfig";
 
 export function ConfigPage() {
-  const { data, refetch, isLoading } = useConfig();
+  const query = useConfig();
+  const { data } = query;
+  const client = useQueryClient();
 
-  if (isLoading || !data) return <p>Loading config…</p>;
+  if (!data) return <QueryFeedback label="config" query={query} />;
 
   return (
     <section>
       <h1>Config</h1>
+      <QueryFeedback label="config" query={query} />
       <p>{data.path}</p>
       <table>
         <thead>
@@ -23,7 +28,7 @@ export function ConfigPage() {
         </thead>
         <tbody>
           {data.settings.map((s) => (
-            <ConfigRow key={s.key} setting={s} onSaved={() => refetch()} />
+            <ConfigRow key={s.key} setting={s} onSaved={() => client.invalidateQueries()} />
           ))}
         </tbody>
       </table>
@@ -31,42 +36,53 @@ export function ConfigPage() {
   );
 }
 
-function ConfigRow({
-  setting,
-  onSaved,
-}: {
-  setting: { key: string; value: string | null; source: string; help: string };
-  onSaved: () => void;
-}) {
-  const [value, setValue] = useState(setting.value ?? "");
+function ConfigRow({ setting, onSaved }: { setting: ConfigSetting; onSaved: () => Promise<void> }) {
+  const [value, setValue] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
-  async function save() {
-    const res = await putConfig(setting.key, value);
-    setMsg(res.message);
-    onSaved();
-  }
-
-  async function unset() {
-    const res = await deleteConfig(setting.key);
-    setMsg(res.message);
-    onSaved();
+  async function mutate(unset: boolean) {
+    setBusy(true);
+    setError(null);
+    setMsg(null);
+    try {
+      const res = unset
+        ? await deleteConfig(setting.key)
+        : await putConfig(setting.key, value ?? setting.value ?? "");
+      await onSaved();
+      setValue(null);
+      setMsg(res.message);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
     <tr>
       <td title={setting.help}>{setting.key}</td>
       <td>
-        <input value={value} onChange={(e) => setValue(e.target.value)} aria-label={setting.key} />
+        <input
+          disabled={busy}
+          value={value ?? setting.value ?? ""}
+          onChange={(e) => setValue(e.target.value)}
+          aria-label={setting.key}
+        />
       </td>
-      <td>{setting.source}</td>
       <td>
-        <button type="button" onClick={save}>
+        {setting.source}
+        {setting.error ? <span role="alert">{setting.error}</span> : null}
+      </td>
+      <td>
+        <button type="button" disabled={busy} onClick={() => mutate(false)}>
           Save
         </button>
-        <button type="button" onClick={unset}>
+        <button type="button" disabled={busy} onClick={() => mutate(true)}>
           Unset
         </button>
+        {error ? <span role="alert">{error}</span> : null}
         {msg ? <span>{msg}</span> : null}
       </td>
     </tr>

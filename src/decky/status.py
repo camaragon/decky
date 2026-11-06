@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import json
-import shlex
 import subprocess
 from typing import Any
 
 import click
 
 from decky import config
+from decky.process import run_command, split_command
 
 MAX_STDOUT = 8192
 MAX_ITEMS = 50
@@ -55,10 +55,10 @@ def load_status() -> dict[str, Any]:
     command, _ = config.resolve("status.command")
     if not command:
         return {"disabled": True}
-    argv = shlex.split(str(command))
+    argv = split_command(str(command), "status.command")
     try:
-        result = subprocess.run(
-            argv,
+        result = run_command(
+            argv, "status.command",
             capture_output=True,
             text=True,
             timeout=5,
@@ -67,8 +67,7 @@ def load_status() -> dict[str, Any]:
     except subprocess.TimeoutExpired as e:
         raise click.ClickException("status.command timed out after 5s") from e
     if result.returncode != 0:
-        err = (result.stderr or result.stdout or "").strip()
-        raise click.ClickException(err or f"status.command exited {result.returncode}")
+        raise click.ClickException(f"status.command exited {result.returncode}; check the command")
     stdout = result.stdout or ""
     if len(stdout.encode("utf-8")) > MAX_STDOUT:
         raise click.ClickException("status.command output exceeds 8 KiB")

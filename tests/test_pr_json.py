@@ -63,7 +63,11 @@ def test_json_buckets_and_filters(monkeypatch, tmp_path, node, flags, keys, numb
     assert data["hidden"] == {
         key: (3 if key == "review" and not flags else 0) for key in keys
     }
-    assert data["notes"] == ["list truncated at GitHub page size"]
+    assert data["notes"] == (
+        []
+        if flags == ["--mine"]
+        else ["review request search truncated at GitHub page size"]
+    )
     if numbers:
         row = data["buckets"]["review"][0]
         assert row == {
@@ -148,7 +152,7 @@ def test_non_json_callers_skip_details(monkeypatch, tmp_path, node):
 
     monkeypatch.setattr(github, "run_gh", fetch)
     lists, notes = github.load_pr_lists()
-    assert notes == [] and lists["watched"] == []
+    assert not any(notes.values()) and lists["watched"] == []
     assert not {"body", "labels", "review_decision", "repo_owner"} & set(
         lists["review"][0]
     )
