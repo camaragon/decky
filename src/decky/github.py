@@ -34,6 +34,14 @@ CHECK_STATES = {
 
 MAX_WATCH = 15
 
+LIST_TRUNCATED = "list truncated at GitHub page size"
+
+TRUNCATION_NOTES = (
+    ("reviewRequests", LIST_TRUNCATED),
+    ("labels", "labels truncated at 100"),
+    ("latestOpinionatedReviews", "approvals may be partial (20 latest reviews)"),
+)
+
 DETAIL_FIELDS = """
   url
   body
@@ -160,15 +168,11 @@ def pr_from_node(node: dict[str, Any], details: bool = False) -> dict[str, Any]:
         "draft": bool(node.get("isDraft")),
         "author": (node.get("author") or {}).get("login") or "",
         "updated_at": node.get("updatedAt") or "",
-        "review_requests_truncated": bool(
-            ((node.get("reviewRequests") or {}).get("pageInfo") or {}).get(
-                "hasNextPage"
-            )
-            or ((node.get("labels") or {}).get("pageInfo") or {}).get("hasNextPage")
-            or ((node.get("latestOpinionatedReviews") or {}).get("pageInfo") or {}).get(
-                "hasNextPage"
-            )
-        ),
+        "truncation_notes": [
+            note
+            for field, note in TRUNCATION_NOTES
+            if ((node.get(field) or {}).get("pageInfo") or {}).get("hasNextPage")
+        ],
     }
     if details:
         owner, name = slug.split("/", 1)
@@ -227,8 +231,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
         raise click.ClickException("pull request not found or inaccessible")
     row = pr_from_node(node, details=True)
     notes: list[str] = []
-    if row.pop("review_requests_truncated", False):
-        _note_truncation(notes, {"hasNextPage": True})
+    _take_notes(notes, row)
     files = _gh_json(
         "api",
         f"repos/{slug}/pulls/{number}/files?per_page=100",
@@ -287,11 +290,19 @@ def _classify_review(node: dict[str, Any], viewer_login: str) -> str | None:
     return None
 
 
+def _add_note(notes: list[str], note: str) -> None:
+    if note not in notes:
+        notes.append(note)
+
+
 def _note_truncation(notes: list[str], page_info: dict[str, Any] | None) -> None:
     if (page_info or {}).get("hasNextPage"):
-        note = "list truncated at GitHub page size"
-        if note not in notes:
-            notes.append(note)
+        _add_note(notes, LIST_TRUNCATED)
+
+
+def _take_notes(notes: list[str], row: dict[str, Any]) -> None:
+    for note in row.pop("truncation_notes"):
+        _add_note(notes, note)
 
 
 def _row_key(row: dict[str, Any]) -> tuple[str, int]:
@@ -330,8 +341,7 @@ def load_pr_lists(
     mine_nodes = (viewer.get("pullRequests") or {}).get("nodes") or []
     mine = [pr_from_node(n, details) for n in mine_nodes if n]
     for row in mine:
-        if row.pop("review_requests_truncated", False):
-            _note_truncation(notes, {"hasNextPage": True})
+        _take_notes(notes, row)
 
     review: list[dict[str, Any]] = []
     team: list[dict[str, Any]] = []
@@ -342,9 +352,7 @@ def load_pr_lists(
 
     def add_row(row: dict[str, Any], bucket: str) -> None:
         key = _row_key(row)
-        truncated = row.pop("review_requests_truncated", False)
-        if truncated:
-            _note_truncation(notes, {"hasNextPage": True})
+        _take_notes(notes, row)
         if bucket == "review":
             if key in review_keys:
                 return

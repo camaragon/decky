@@ -167,10 +167,8 @@ def image_urls(body: str) -> list[str]:
         url = references.get(match[2] or match[1])
         if url:
             urls.append(unescape(url))
-    for match in re.finditer(r"https?://[^\s<>\"']+", body):
-        url = unescape(match[0]).rstrip(".,;]}")
-        while url.endswith(")") and url.count(")") > url.count("("):
-            url = url[:-1]
+    for match in re.finditer(r"https?://[^\s<>\"'()\[\]]+", body):
+        url = unescape(match[0]).rstrip(".,;}")
         if (
             url.split("?", 1)[0]
             .split("#", 1)[0]

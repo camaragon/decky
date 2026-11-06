@@ -26,6 +26,8 @@ def test_show_pages_files_and_checks_and_extracts_images(monkeypatch, changed_fi
 <img src="https://images.example/html?a=1&amp;b=2">
 https://github.com/user-attachments/assets/abc
 https://images.example/raw.webp
+[![Linked](https://images.example/linked.png)](https://images.example/linked.png)
+![a](https://images.example/1.png)![b](https://images.example/2.png)
 ![Local](./private.png)
 [Ordinary link](https://example.com/page)
 """,
@@ -125,8 +127,11 @@ https://images.example/raw.webp
         "https://images.example/html?a=1&b=2",
         "https://github.com/user-attachments/assets/abc",
         "https://images.example/raw.webp",
+        "https://images.example/linked.png",
+        "https://images.example/1.png",
+        "https://images.example/2.png",
     }
-    assert len(row["image_urls"]) == 6 and set(seen) == set(endpoints)
+    assert len(row["image_urls"]) == 9 and set(seen) == set(endpoints)
 
 
 @pytest.mark.parametrize("args", [["list"], ["show", "example/api", "8"]])

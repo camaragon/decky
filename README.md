@@ -65,8 +65,9 @@ Each PR has these fields (snake_case is part of the interface):
 Consumers should check `version` and tolerate additional fields. Incompatible
 changes increment the version. Lists retain the existing repo/number ordering and
 GitHub limits: 50 PRs per source, 20 latest reviews, 20 review requests, 100 labels,
-and 15 entries per watch setting. `notes` warns when a limit may hide data;
-approval counts may then be partial. Results are snapshots, not a transaction.
+and 15 entries per watch setting. `notes` warns when a limit may hide data:
+`list truncated at GitHub page size` for PR lists and review requests,
+`labels truncated at 100`, and `approvals may be partial (20 latest reviews)`. Results are snapshots, not a transaction.
 
 ## `decky pr show`
 
