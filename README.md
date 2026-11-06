@@ -123,7 +123,7 @@ Default file: `~/.config/decky/config.toml` (mode `600` on write).
 | `pr.hide_authors`  | `DECKY_PR_HIDE_AUTHORS`  | Hidden logins unless `--all`                                             |
 | `pr.watch_teams`   | `DECKY_PR_WATCH_TEAMS`   | Extra team review sources (`org/team`)                                   |
 | `pr.watch_repos`   | `DECKY_PR_WATCH_REPOS`   | Extra review candidates from `owner/repo`                                |
-| `pr.watch_owners`  | `DECKY_PR_WATCH_OWNERS`  | Extra review candidates across users or organizations                    |
+| `pr.watch_owners`  | `DECKY_PR_WATCH_OWNERS`  | Users or organizations for the JSON `watched` bucket                     |
 | `review.command`   | `DECKY_REVIEW_COMMAND`   | Review pane command template                                             |
 | `queue.command`    | `DECKY_QUEUE_COMMAND`    | Optional argv printing `{today, mine, direct, team}` JSON for the web UI |
 | `jira.browse_url`  | `DECKY_JIRA_BROWSE_URL`  | Optional `{key}` URL template for queue Jira links                       |

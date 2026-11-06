@@ -66,7 +66,7 @@ SETTINGS: dict[str, Setting] = {
         Setting(
             "pr.watch_owners",
             "DECKY_PR_WATCH_OWNERS",
-            "Owners (users or organizations) whose open PRs appear as review candidates",
+            "Owners (users or organizations) whose open PRs fill the JSON watched bucket",
             "[]",
             kind="list_str",
         ),

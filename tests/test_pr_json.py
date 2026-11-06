@@ -116,6 +116,7 @@ def test_owner_sources_deduplicate_and_preserve_mine(monkeypatch, tmp_path, node
 
 def test_non_json_callers_skip_details(monkeypatch, tmp_path, node):
     monkeypatch.setenv("DECKY_CONFIG", str(tmp_path / "config.toml"))
+    monkeypatch.setenv("DECKY_PR_WATCH_OWNERS", ",".join(f"o{i}" for i in range(16)))
     payload = {
         "viewer": {"login": "viewer", "pullRequests": {"nodes": []}},
         "reviewSearch": {"nodes": [node]},
@@ -123,10 +124,12 @@ def test_non_json_callers_skip_details(monkeypatch, tmp_path, node):
 
     def fetch(*args):
         assert "body" not in args[-1] and "labels" not in args[-1]
+        assert "watchOwner" not in args[-1]
         return subprocess.CompletedProcess([], 0, stdout=json.dumps({"data": payload}))
 
     monkeypatch.setattr(github, "run_gh", fetch)
-    lists, _ = github.load_pr_lists()
+    lists, notes = github.load_pr_lists()
+    assert notes == [] and lists["watched"] == []
     assert not {"body", "labels", "review_decision", "repo_owner"} & set(
         lists["review"][0]
     )

@@ -38,7 +38,8 @@ DETAIL_FIELDS = """
   url
   body
   reviewDecision
-  labels(first: 100) { pageInfo { hasNextPage } nodes { name } }"""
+  labels(first: 100) { pageInfo { hasNextPage } nodes { name } }
+  latestOpinionatedReviews(first: 20) { pageInfo { hasNextPage } }"""
 
 PR_FIELDS = """
 fragment PrFields on PullRequest {
@@ -49,7 +50,7 @@ fragment PrFields on PullRequest {
   author { login }
   repository { nameWithOwner }
   commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
-  latestOpinionatedReviews(first: 20) { pageInfo { hasNextPage } nodes { state } }
+  latestOpinionatedReviews(first: 20) { nodes { state } }
   reviewRequests(first: 20) {
     pageInfo { hasNextPage }
     nodes { requestedReviewer { ... on User { login } ... on Team { slug } } }
@@ -233,7 +234,7 @@ def load_pr_lists(
     """Load review, team, mine, and watched lists; return notes for truncation."""
     watch_teams = _list_setting("pr.watch_teams")
     watch_repos = _list_setting("pr.watch_repos")
-    watch_owners = _list_setting("pr.watch_owners")
+    watch_owners = _list_setting("pr.watch_owners") if details else []
     query = build_graphql(watch_teams, watch_repos, watch_owners, details)
     try:
         data = _gh_json("api", "graphql", "-f", f"query={query}")["data"]
