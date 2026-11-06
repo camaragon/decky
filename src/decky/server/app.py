@@ -6,6 +6,8 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import click
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.exceptions import RequestValidationError
@@ -51,6 +53,7 @@ def create_app(
             return JSONResponse({"message": "host not allowed"}, status_code=421)
         return await call_next(request)
 
+    @app.exception_handler(click.ClickException)
     @app.exception_handler(ActionFailed)
     async def action_failed(_request: Request, exc: ActionFailed):
         return JSONResponse({"message": str(exc)}, status_code=422)

@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { fetchMeta } from "../lib/api";
 import { useStatus } from "../hooks/useStatus";
+import { QueryFeedback } from "./QueryFeedback";
 import { StatusSidebar } from "./StatusSidebar";
 import { ThemeToggle } from "./ThemeToggle";
 import { Button } from "./ui/button";
@@ -30,11 +31,15 @@ export function Layout({
   const counts: Record<string, number> = { "/": reviewCount, "/prs": mineCount };
   const meta = useQuery({ queryKey: ["meta"], queryFn: fetchMeta });
   const status = useStatus(Boolean(meta.data?.statusConfigured));
-  const statusPayload =
-    status.data && !status.data.disabled ? status.data : null;
+  const statusPayload = status.data && !status.data.disabled ? status.data : null;
 
   return (
-    <div className={cn("grid min-h-screen bg-background", collapsed ? "grid-cols-[3rem_1fr]" : "grid-cols-[14rem_1fr]")}>
+    <div
+      className={cn(
+        "grid min-h-screen bg-background",
+        collapsed ? "grid-cols-[3rem_1fr]" : "grid-cols-[14rem_1fr]",
+      )}
+    >
       <aside className="flex flex-col border-r border-border bg-sidebar px-2 py-2">
         <div className="mb-2 flex items-center justify-between gap-1">
           {!collapsed ? <span className="text-sm font-bold tracking-tight">decky</span> : null}
@@ -53,11 +58,15 @@ export function Layout({
             {collapsed ? "»" : "«"}
           </Button>
         </div>
+        {!collapsed ? <QueryFeedback label="settings" query={meta} /> : null}
+        {!collapsed && meta.data?.statusConfigured ? (
+          <QueryFeedback label="status" query={status} />
+        ) : null}
         {!collapsed && statusPayload ? (
           <StatusSidebar
             waiting={statusPayload.waiting}
             running={statusPayload.running}
-            error={status.error ? String(status.error) : null}
+            error={null}
             onRefresh={() => status.refetch()}
           />
         ) : null}
@@ -73,7 +82,9 @@ export function Layout({
                 collapsed && "text-center px-1",
               )}
             >
-              {collapsed ? link.label[0] : `${link.label}${counts[link.to] != null ? ` (${counts[link.to]})` : ""}`}
+              {collapsed
+                ? link.label[0]
+                : `${link.label}${counts[link.to] != null ? ` (${counts[link.to]})` : ""}`}
             </Link>
           ))}
         </nav>

@@ -217,11 +217,17 @@ def _classify_review(node: dict[str, Any], viewer_login: str) -> str | None:
     return None
 
 
-def _note_truncation(notes: list[str], page_info: dict[str, Any] | None) -> None:
+def _note_truncation(
+    notes: dict[str, list[str]],
+    kinds: tuple[str, ...],
+    page_info: dict[str, Any] | None,
+    source: str,
+) -> None:
     if (page_info or {}).get("hasNextPage"):
-        note = "list truncated at GitHub page size"
-        if note not in notes:
-            notes.append(note)
+        note = f"{source} truncated at GitHub page size"
+        for kind in kinds:
+            if note not in notes[kind]:
+                notes[kind].append(note)
 
 
 def _row_key(row: dict[str, Any]) -> tuple[str, int]:
@@ -231,8 +237,8 @@ def _row_key(row: dict[str, Any]) -> tuple[str, int]:
 def load_pr_lists(
     details: bool = False,
     watched: bool = False,
-) -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
-    """Load review, team, mine, and watched lists; return notes for truncation."""
+) -> tuple[dict[str, list[dict[str, Any]]], dict[str, list[str]]]:
+    """Load PR buckets with truncation notes scoped to each bucket."""
     watch_teams = _list_setting("pr.watch_teams")
     watch_repos = _list_setting("pr.watch_repos")
     watch_owners = _list_setting("pr.watch_owners") if watched else []
@@ -246,35 +252,43 @@ def load_pr_lists(
 
     viewer = data["viewer"]
     login = viewer["login"]
-    notes: list[str] = []
-    if any(
-        len(values) > MAX_WATCH for values in (watch_teams, watch_repos, watch_owners)
+    notes: dict[str, list[str]] = {
+        key: []
+        for key in (
+            ("review", "team", "mine", "watched")
+            if watched
+            else ("review", "team", "mine")
+        )
+    }
+    for values, kinds in (
+        (watch_teams, ("review", "team")),
+        (watch_repos, ("review",)),
+        (watch_owners, ("watched",)),
     ):
-        notes.append(f"watch sources limited to {MAX_WATCH} entries per setting")
+        if len(values) > MAX_WATCH:
+            for kind in kinds:
+                note = f"watch sources limited to {MAX_WATCH} entries per setting"
+                if note not in notes[kind]:
+                    notes[kind].append(note)
 
-    mine_page = (viewer.get("pullRequests") or {}).get("pageInfo") or {}
-    _note_truncation(notes, mine_page)
-    search_page = (data.get("reviewSearch") or {}).get("pageInfo") or {}
-    _note_truncation(notes, search_page)
-
-    mine_nodes = (viewer.get("pullRequests") or {}).get("nodes") or []
-    mine = [pr_from_node(n, details) for n in mine_nodes if n]
-    for row in mine:
-        if row.pop("review_requests_truncated", False):
-            _note_truncation(notes, {"hasNextPage": True})
-
+    mine_block = viewer.get("pullRequests") or {}
+    _note_truncation(notes, ("mine",), mine_block.get("pageInfo"), "your pull requests")
+    _note_truncation(
+        notes,
+        ("review", "team"),
+        (data.get("reviewSearch") or {}).get("pageInfo"),
+        "review request search",
+    )
+    mine = [pr_from_node(n, details) for n in mine_block.get("nodes") or [] if n]
     review: list[dict[str, Any]] = []
     team: list[dict[str, Any]] = []
-    watched: list[dict[str, Any]] = []
+    watched_rows: list[dict[str, Any]] = []
     review_keys: set[tuple[str, int]] = set()
     team_keys: set[tuple[str, int]] = set()
     watched_keys: set[tuple[str, int]] = set()
 
     def add_row(row: dict[str, Any], bucket: str) -> None:
         key = _row_key(row)
-        truncated = row.pop("review_requests_truncated", False)
-        if truncated:
-            _note_truncation(notes, {"hasNextPage": True})
         if bucket == "review":
             if key in review_keys:
                 return
@@ -286,68 +300,65 @@ def load_pr_lists(
             if key in review_keys or key in team_keys or key in watched_keys:
                 return
             watched_keys.add(key)
-            watched.append(row)
+            watched_rows.append(row)
         else:
-            if key in review_keys:
-                return
-            if key in team_keys:
+            if key in review_keys or key in team_keys:
                 return
             team_keys.add(key)
             team.append(row)
 
     for node in (data.get("reviewSearch") or {}).get("nodes") or []:
-        if not node:
-            continue
-        row = pr_from_node(node, details)
-        kind = _classify_review(node, login)
-        if kind == "review":
-            add_row(row, "review")
-        elif kind == "team":
-            add_row(row, "team")
-
-    for i, _team in enumerate(watch_teams[:MAX_WATCH]):
-        block = data.get(f"watchTeam{i}") or {}
-        _note_truncation(notes, block.get("pageInfo"))
-        for node in block.get("nodes") or []:
-            if not node:
-                continue
-            row = pr_from_node(node, details)
+        if node:
             kind = _classify_review(node, login)
-            if kind == "review":
-                add_row(row, "review")
-            else:
-                add_row(row, "team")
+            if kind:
+                add_row(pr_from_node(node, details), kind)
 
-    for key, bucket in (
-        *(
-            (f"watchRepo{i}", "review")
-            for i in range(min(len(watch_repos), MAX_WATCH))
-        ),
-        *(
-            (f"watchOwner{i}", "watched")
-            for i in range(min(len(watch_owners), MAX_WATCH))
-        ),
-    ):
-        block = data.get(key) or {}
-        _note_truncation(notes, block.get("pageInfo"))
+    for i, watched_team in enumerate(watch_teams[:MAX_WATCH]):
+        block = data.get(f"watchTeam{i}") or {}
+        _note_truncation(
+            notes,
+            ("review", "team"),
+            block.get("pageInfo"),
+            f"watched team {watched_team}",
+        )
         for node in block.get("nodes") or []:
-            if not node:
-                continue
-            row = pr_from_node(node, details)
-            if same_login(row["author"], login):
-                continue
-            add_row(row, bucket)
+            if node:
+                kind = _classify_review(node, login)
+                add_row(
+                    pr_from_node(node, details),
+                    "review" if kind == "review" else "team",
+                )
 
+    for source, values, bucket in (
+        ("Repo", watch_repos, "review"),
+        ("Owner", watch_owners, "watched"),
+    ):
+        for i, value in enumerate(values[:MAX_WATCH]):
+            block = data.get(f"watch{source}{i}") or {}
+            _note_truncation(
+                notes,
+                (bucket,),
+                block.get("pageInfo"),
+                f"watched {source.lower()} {value}",
+            )
+            for node in block.get("nodes") or []:
+                if node:
+                    row = pr_from_node(node, details)
+                    if not same_login(row["author"], login):
+                        add_row(row, bucket)
+
+    lists = {"review": review, "team": team, "mine": mine, "watched": watched_rows}
+    for bucket, rows in lists.items():
+        source = (
+            "reviewers on your pull requests"
+            if bucket == "mine"
+            else "reviewers on review requests"
+        )
+        for row in rows:
+            if row.pop("review_requests_truncated", False):
+                _note_truncation(notes, (bucket,), {"hasNextPage": True}, source)
     sort_key = lambda pr: (pr["repo"], pr["number"])
-    return (
-        {
-            "review": sorted(review, key=sort_key),
-            "team": sorted(team, key=sort_key),
-            "mine": sorted(mine, key=sort_key),
-            "watched": sorted(watched, key=sort_key),
-        },
-        notes,
-    )
+    return {bucket: sorted(rows, key=sort_key) for bucket, rows in lists.items()}, notes
 
 
 def clone(slug: str, dest: Path) -> None:

@@ -18,11 +18,8 @@ LOG_LEVELS = {"debug", "info", "warning", "error"}
 def _resolve_port(port: int | None) -> int:
     if port is not None:
         return port
-    raw, _ = config.resolve("server.port")
-    try:
-        return int(raw or 8777)
-    except (TypeError, ValueError):
-        raise click.UsageError(f"server.port must be an integer, not {raw!r}") from None
+    resolved, _ = config.resolve("server.port")
+    return resolved
 
 
 def _warn_non_loopback(host: str) -> None:
@@ -46,7 +43,10 @@ def _open_ui(host: str, port: int, no_open: bool, dev: bool) -> None:
         url = _http_url("127.0.0.1", port)
     else:
         url = _http_url(host, port)
-    browser.open_http_url(url)
+    try:
+        browser.open_http_url(url)
+    except click.ClickException as e:
+        click.echo(f"warning: could not open {url}: {e.message}; open it manually", err=True)
 
 
 @click.command("server")

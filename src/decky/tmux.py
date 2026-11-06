@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import shlex
 import subprocess
 from pathlib import Path
 from shutil import which
@@ -11,6 +10,7 @@ from shutil import which
 import click
 
 from decky import config, review
+from decky.process import launch, run_command
 
 
 def _parse_pr_url(url: str) -> tuple[str, int]:
@@ -34,8 +34,8 @@ class TmuxBackend:
         if configured:
             return str(configured)
         if os.environ.get("TMUX"):
-            result = subprocess.run(
-                [binary, "display-message", "-p", "#S"],
+            result = run_command(
+                [binary, "display-message", "-p", "#S"], "tmux.bin",
                 capture_output=True,
                 text=True,
                 check=False,
@@ -45,10 +45,9 @@ class TmuxBackend:
         return "decky"
 
     def _run(self, binary: str, args: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
-        result = subprocess.run([binary, *args], capture_output=True, text=True, check=False)
+        result = run_command([binary, *args], "tmux.bin", capture_output=True, text=True, check=False)
         if check and result.returncode != 0:
-            message = (result.stderr or result.stdout).strip()
-            raise click.ClickException(f"tmux failed: {message}")
+            raise click.ClickException(f"tmux.bin: command exited {result.returncode}; check the session")
         return result
 
     def _window_names(self, binary: str, session: str) -> list[str]:
@@ -58,7 +57,7 @@ class TmuxBackend:
         return [line for line in result.stdout.splitlines() if line]
 
     def _ensure_session(self, binary: str, session: str) -> None:
-        has = subprocess.run([binary, "has-session", "-t", session], capture_output=True, check=False)
+        has = run_command([binary, "has-session", "-t", session], "tmux.bin", capture_output=True, check=False)
         if has.returncode != 0:
             self._run(binary, ["new-session", "-d", "-s", session])
 
@@ -67,7 +66,7 @@ class TmuxBackend:
         template, _ = config.resolve("browser.command")
         template = template or "open {url}"
         cmd = review.interpolate(template, slug=slug, number=number, dest=dest)
-        subprocess.run(shlex.split(cmd), check=False)
+        launch(cmd, "browser.command")
 
     def focus_existing(self, name: str, url: str) -> bool:
         binary = self._binary()

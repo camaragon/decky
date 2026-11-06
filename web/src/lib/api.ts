@@ -54,6 +54,7 @@ export type ConfigSetting = {
   source: string;
   help: string;
   kind: string;
+  error?: string | null;
 };
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
