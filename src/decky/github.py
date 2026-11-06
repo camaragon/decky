@@ -34,6 +34,14 @@ CHECK_STATES = {
 
 MAX_WATCH = 15
 
+LIST_TRUNCATED = "list truncated at GitHub page size"
+
+TRUNCATION_NOTES = (
+    ("reviewRequests", LIST_TRUNCATED),
+    ("labels", "labels truncated at 100"),
+    ("latestOpinionatedReviews", "approvals may be partial (20 latest reviews)"),
+)
+
 DETAIL_FIELDS = """
   url
   body
@@ -164,11 +172,14 @@ def pr_from_node(node: dict[str, Any], details: bool = False) -> dict[str, Any]:
             ((node.get("reviewRequests") or {}).get("pageInfo") or {}).get(
                 "hasNextPage"
             )
-            or ((node.get("labels") or {}).get("pageInfo") or {}).get("hasNextPage")
-            or ((node.get("latestOpinionatedReviews") or {}).get("pageInfo") or {}).get(
-                "hasNextPage"
-            )
         ),
+        "truncation_notes": [
+            note
+            for field, note in TRUNCATION_NOTES
+            if details
+            and field != "reviewRequests"
+            and ((node.get(field) or {}).get("pageInfo") or {}).get("hasNextPage")
+        ],
     }
     if details:
         owner, name = slug.split("/", 1)
@@ -199,6 +210,77 @@ def _gh_json(*args: str) -> Any:
     return payload
 
 
+def load_pr(slug: str, number: int) -> tuple[dict[str, Any], list[str]]:
+    owner, repo = slug.split("/")
+    query = (
+        (PR_FIELDS % DETAIL_FIELDS)
+        + """
+query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $number) { ...PrFields changedFiles headRefOid }
+  }
+}
+"""
+    )
+    data = _gh_json(
+        "api",
+        "graphql",
+        "-f",
+        f"query={query}",
+        "-f",
+        f"owner={owner}",
+        "-f",
+        f"repo={repo}",
+        "-F",
+        f"number={number}",
+    )["data"]
+    node = (data.get("repository") or {}).get("pullRequest")
+    if not node:
+        raise click.ClickException("pull request not found or inaccessible")
+    row = pr_from_node(node, details=True)
+    notes: list[str] = []
+    if row.pop("review_requests_truncated", False):
+        _add_note(notes, "review requests truncated at 20")
+    _take_notes(notes, row)
+    files = _gh_json(
+        "api",
+        f"repos/{slug}/pulls/{number}/files?per_page=100",
+        "--paginate",
+        "--slurp",
+    )
+    row["files"] = [
+        {
+            "path": f["filename"],
+            "additions": f["additions"],
+            "deletions": f["deletions"],
+        }
+        for page in files
+        for f in page
+    ]
+    row["changed_files"] = node["changedFiles"]
+    if len(row["files"]) < row["changed_files"]:
+        notes.append("changed files truncated by GitHub (maximum 3000)")
+    commit = f"repos/{slug}/commits/{node['headRefOid']}"
+    runs = _gh_json("api", f"{commit}/check-runs?per_page=100", "--paginate", "--slurp")
+    statuses = _gh_json("api", f"{commit}/status?per_page=100", "--paginate", "--slurp")
+    row["check_runs"] = [
+        {
+            "name": c["name"],
+            "status": c["status"],
+            "conclusion": c["conclusion"],
+            "url": c["html_url"],
+        }
+        for page in runs
+        for c in page["check_runs"]
+    ]
+    row["commit_statuses"] = [
+        {"name": c["context"], "state": c["state"], "url": c["target_url"]}
+        for page in statuses
+        for c in page["statuses"]
+    ]
+    return row, notes
+
+
 def _classify_review(node: dict[str, Any], viewer_login: str) -> str | None:
     """Return review, team, or None if this search node is not a review request for viewer."""
     requests = (node.get("reviewRequests") or {}).get("nodes") or []
@@ -218,6 +300,11 @@ def _classify_review(node: dict[str, Any], viewer_login: str) -> str | None:
     return None
 
 
+def _add_note(notes: list[str], note: str) -> None:
+    if note not in notes:
+        notes.append(note)
+
+
 def _note_truncation(
     notes: dict[str, list[str]],
     kinds: tuple[str, ...],
@@ -229,6 +316,11 @@ def _note_truncation(
         for kind in kinds:
             if note not in notes[kind]:
                 notes[kind].append(note)
+
+
+def _take_notes(notes: list[str], row: dict[str, Any]) -> None:
+    for note in row.pop("truncation_notes", []):
+        _add_note(notes, note)
 
 
 def _row_key(row: dict[str, Any]) -> tuple[str, int]:
@@ -358,6 +450,7 @@ def load_pr_lists(
         for row in rows:
             if row.pop("review_requests_truncated", False):
                 _note_truncation(notes, (bucket,), {"hasNextPage": True}, source)
+            _take_notes(notes[bucket], row)
     sort_key = lambda pr: (pr["repo"], pr["number"])
     return {bucket: sorted(rows, key=sort_key) for bucket, rows in lists.items()}, notes
 

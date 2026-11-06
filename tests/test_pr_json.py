@@ -156,3 +156,31 @@ def test_non_json_callers_skip_details(monkeypatch, tmp_path, node):
     assert not {"body", "labels", "review_decision", "repo_owner"} & set(
         lists["review"][0]
     )
+
+
+def test_truncated_metadata_does_not_leak_internal_flags(monkeypatch, node):
+    node["latestOpinionatedReviews"]["pageInfo"] = {"hasNextPage": True}
+    node["labels"]["pageInfo"] = {"hasNextPage": True}
+    payload = {
+        "viewer": {
+            "login": "viewer",
+            "pullRequests": {"nodes": [node, _node("example/api", 9)]},
+        },
+        "reviewSearch": {"nodes": []},
+    }
+    monkeypatch.setattr(
+        github,
+        "run_gh",
+        lambda *a: subprocess.CompletedProcess(
+            [], 0, stdout=json.dumps({"data": payload})
+        ),
+    )
+    result = CliRunner().invoke(cli, ["pr", "list", "--json", "--mine", "--all"])
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)
+    assert data["notes"] == [
+        "labels truncated at 100",
+        "approvals may be partial (20 latest reviews)",
+    ]
+    assert len(data["buckets"]["mine"]) == 2
+    assert all("truncation_notes" not in row for row in data["buckets"]["mine"])

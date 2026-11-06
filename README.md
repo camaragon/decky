@@ -65,8 +65,34 @@ Each PR has these fields (snake_case is part of the interface):
 Consumers should check `version` and tolerate additional fields. Incompatible
 changes increment the version. Lists retain the existing repo/number ordering and
 GitHub limits: 50 PRs per source, 20 latest reviews, 20 review requests, 100 labels,
-and 15 entries per watch setting. `notes` warns when a limit may hide data;
-approval counts may then be partial. Results are snapshots, not a transaction.
+and 15 entries per watch setting. `notes` warns when a limit may hide data:
+`list truncated at GitHub page size` for PR lists and review requests,
+`labels truncated at 100`, and `approvals may be partial (20 latest reviews)`. Results are snapshots, not a transaction.
+
+## `decky pr show`
+
+```bash
+decky pr show owner/repo 123 --json
+```
+
+Fetches a single PR, including closed PRs, without applying list filters. Requires
+an explicit `OWNER/REPO` and a positive PR number. It emits
+`{"version":1,"pr":{...},"notes":[]}` with all the PR fields above plus:
+
+- `changed_files`: integer total reported by GitHub.
+- `files`: array of `{path: string, additions: integer, deletions: integer}`.
+- `check_runs`: array of `{name: string, status: string, conclusion: string|null, url: string|null}`.
+- `commit_statuses`: array of `{name: string, state: string, url: string|null}`.
+- `image_urls`: deduplicated HTTP(S) URLs from Markdown inline/reference images,
+  HTML `img` sources, bare image URLs, and GitHub attachment URLs in the body.
+  Relative paths are omitted; URLs are extracted without downloading images.
+
+Latest check runs and commit statuses describe the fetched head commit and retain
+GitHub's state strings. Files, check runs, and commit statuses are paginated. The
+[check-run endpoint](https://docs.github.com/en/rest/checks/runs#list-check-runs-for-a-git-reference)
+covers the 1000 most recent check suites. GitHub limits
+changed-file responses to 3000 files; `notes` warns if fewer files than
+`changed_files` are returned. The metadata limits above also apply.
 
 ## `decky pr review`
 
