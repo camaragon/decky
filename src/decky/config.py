@@ -39,7 +39,9 @@ SETTINGS: dict[str, Setting] = {
             "false",
             kind="bool",
         ),
-        Setting("pr.dir", "DECKY_PR_DIR", "Parent directory for PR checkouts", kind="path"),
+        Setting(
+            "pr.dir", "DECKY_PR_DIR", "Parent directory for PR checkouts", kind="path"
+        ),
         Setting(
             "pr.hide_authors",
             "DECKY_PR_HIDE_AUTHORS",
@@ -58,6 +60,13 @@ SETTINGS: dict[str, Setting] = {
             "pr.watch_repos",
             "DECKY_PR_WATCH_REPOS",
             "Repos (owner/name) whose open PRs appear as review candidates",
+            "[]",
+            kind="list_str",
+        ),
+        Setting(
+            "pr.watch_owners",
+            "DECKY_PR_WATCH_OWNERS",
+            "Owners (users or organizations) whose open PRs fill the JSON watched bucket",
             "[]",
             kind="list_str",
         ),
@@ -323,6 +332,7 @@ dir = "~/prs"
 # Extra review sources when GitHub team membership does not cover you:
 # watch_teams = ["acme-corp/platform", "acme-corp/security"]
 # watch_repos = ["acme-corp/api", "acme-corp/web"]
+# watch_owners = ["example-org", "example-user"]
 
 [review]
 # Required before `decky pr review` or Enter in the list.
@@ -406,5 +416,7 @@ def interactive(flag: bool | None) -> bool:
     value, source = resolve("interactive")
     on = BOOLEANS.get(str(value).lower())
     if on is None:
-        raise click.ClickException(f"interactive ({source}) must be true or false, not {value!r}")
+        raise click.ClickException(
+            f"interactive ({source}) must be true or false, not {value!r}"
+        )
     return on and in_terminal()

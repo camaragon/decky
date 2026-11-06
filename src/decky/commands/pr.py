@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import click
@@ -156,18 +157,44 @@ def review(repo: str, number: int, org: str | None) -> None:
 )
 @click.option("-m", "--mine", is_flag=True, help="List PRs you opened.")
 @click.option("-t", "--team", is_flag=True, help="List team review requests.")
+@click.option(
+    "--json", "as_json", is_flag=True, help="Emit versioned JSON; disables the picker."
+)
 def list_prs(
     interactive: bool | None,
     show_all: bool,
     mine: bool,
     team: bool,
+    as_json: bool,
 ) -> None:
     """List open pull requests (alias ls)."""
     if mine and team:
         raise click.UsageError("cannot use --mine and --team together")
     kind = "mine" if mine else "team" if team else "review"
-    use_interactive = config.interactive(interactive)
 
+    if as_json:
+        lists, truncation_notes = github.load_pr_lists(
+            details=True, watched=not (mine or team)
+        )
+        selected = (kind,) if mine or team else (*KINDS, "watched")
+        filtered = {key: filter_prs(lists[key], show_all) for key in selected}
+        click.echo(
+            json.dumps(
+                {
+                    "version": 1,
+                    "buckets": {key: rows for key, (rows, _) in filtered.items()},
+                    "hidden": {key: count for key, (_, count) in filtered.items()},
+                    "notes": list(
+                        dict.fromkeys(
+                            note for key in selected for note in truncation_notes[key]
+                        )
+                    ),
+                }
+            )
+        )
+        return
+
+    use_interactive = config.interactive(interactive)
     lists, truncation_notes = fetch_lists()
     if not use_interactive:
         prs, hidden = filter_prs(lists[kind], show_all)
@@ -187,11 +214,9 @@ def list_prs(
     while True:
         prs, hidden = filter_prs(fetched[kind], show_all)
         title = TITLES[kind]
-        hint_parts = []
+        hint_parts = list(truncation_notes[kind])
         if hidden:
             title += f" ({hidden} hidden)"
-        for note in truncation_notes[kind]:
-            hint_parts.append(note)
         following = KINDS[(KINDS.index(kind) + 1) % len(KINDS)]
         keys = f"tab {TITLES[following]}, a {'filter' if show_all else 'show all'}"
         if prs:

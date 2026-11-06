@@ -34,10 +34,17 @@ CHECK_STATES = {
 
 MAX_WATCH = 15
 
+DETAIL_FIELDS = """
+  url
+  body
+  reviewDecision
+  labels(first: 100) { pageInfo { hasNextPage } nodes { name } }
+  latestOpinionatedReviews(first: 20) { pageInfo { hasNextPage } }"""
+
 PR_FIELDS = """
 fragment PrFields on PullRequest {
   number
-  title
+  title%s
   isDraft
   updatedAt
   author { login }
@@ -70,22 +77,32 @@ def _escape_query(q: str) -> str:
     return q.replace("\\", "\\\\").replace('"', '\\"')
 
 
-def build_graphql(watch_teams: list[str], watch_repos: list[str]) -> str:
+def build_graphql(
+    watch_teams: list[str],
+    watch_repos: list[str],
+    watch_owners: list[str] | None = None,
+    details: bool = False,
+) -> str:
     extra = ""
     for i, team in enumerate(watch_teams[:MAX_WATCH]):
         q = _escape_query(f"is:pr is:open archived:false team-review-requested:{team}")
         extra += f"""
   watchTeam{i}: search(query: "{q}", type: ISSUE, first: 50) {{{SEARCH_NODES}
   }}"""
-    for i, repo in enumerate(watch_repos[:MAX_WATCH]):
-        q = _escape_query(
-            f"repo:{repo} is:pr is:open archived:false -author:@me -reviewed-by:@me"
-        )
-        extra += f"""
-  watchRepo{i}: search(query: "{q}", type: ISSUE, first: 50) {{{SEARCH_NODES}
+    for source, qualifier, values in (
+        ("Repo", "repo", watch_repos),
+        ("Owner", "user", watch_owners or []),
+    ):
+        for i, value in enumerate(values[:MAX_WATCH]):
+            q = _escape_query(
+                f"{qualifier}:{value} is:pr is:open archived:false -author:@me -reviewed-by:@me"
+            )
+            extra += f"""
+  watch{source}{i}: search(query: "{q}", type: ISSUE, first: 50) {{{SEARCH_NODES}
   }}"""
+    fields = PR_FIELDS % (DETAIL_FIELDS if details else "")
     return f"""
-{PR_FIELDS}
+{fields}
 
 query DeckyPrLists {{
   viewer {{
@@ -128,14 +145,15 @@ def run_gh(*args: str) -> subprocess.CompletedProcess[str]:
     raise AssertionError("unreachable")
 
 
-def pr_from_node(node: dict[str, Any]) -> dict[str, Any]:
+def pr_from_node(node: dict[str, Any], details: bool = False) -> dict[str, Any]:
     commits = (node.get("commits") or {}).get("nodes") or []
     rollup = commits[0]["commit"]["statusCheckRollup"] if commits else None
     state = rollup.get("state") if rollup else None
     reviews = (node.get("latestOpinionatedReviews") or {}).get("nodes") or []
-    return {
+    slug = node["repository"]["nameWithOwner"]
+    row = {
         "number": node["number"],
-        "repo": node["repository"]["nameWithOwner"],
+        "repo": slug,
         "title": node["title"],
         "checks": CHECK_STATES.get(state, "none"),
         "approvals": sum(1 for r in reviews if r and r.get("state") == "APPROVED"),
@@ -146,8 +164,39 @@ def pr_from_node(node: dict[str, Any]) -> dict[str, Any]:
             ((node.get("reviewRequests") or {}).get("pageInfo") or {}).get(
                 "hasNextPage"
             )
+            or ((node.get("labels") or {}).get("pageInfo") or {}).get("hasNextPage")
+            or ((node.get("latestOpinionatedReviews") or {}).get("pageInfo") or {}).get(
+                "hasNextPage"
+            )
         ),
     }
+    if details:
+        owner, name = slug.split("/", 1)
+        row.update(
+            repo_owner=owner,
+            repo_name=name,
+            url=node.get("url") or f"https://github.com/{slug}/pull/{node['number']}",
+            body=node.get("body") or "",
+            review_decision=node.get("reviewDecision"),
+            labels=[
+                label["name"] for label in (node.get("labels") or {}).get("nodes", [])
+            ],
+        )
+    return row
+
+
+def _gh_json(*args: str) -> Any:
+    result = run_gh(*args)
+    if result.returncode:
+        operation = "api graphql" if args[:2] == ("api", "graphql") else "request"
+        raise click.ClickException(f"gh {operation} failed: {result.stderr.strip()}")
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        raise click.ClickException("gh returned unreadable JSON") from None
+    if isinstance(payload, dict) and payload.get("errors"):
+        raise click.ClickException(f"GitHub errors: {payload['errors']}")
+    return payload
 
 
 def _classify_review(node: dict[str, Any], viewer_login: str) -> str | None:
@@ -170,7 +219,10 @@ def _classify_review(node: dict[str, Any], viewer_login: str) -> str | None:
 
 
 def _note_truncation(
-    notes: dict[str, list[str]], kinds: tuple[str, ...], page_info: dict[str, Any] | None, source: str
+    notes: dict[str, list[str]],
+    kinds: tuple[str, ...],
+    page_info: dict[str, Any] | None,
+    source: str,
 ) -> None:
     if (page_info or {}).get("hasNextPage"):
         note = f"{source} truncated at GitHub page size"
@@ -183,39 +235,58 @@ def _row_key(row: dict[str, Any]) -> tuple[str, int]:
     return (row["repo"], row["number"])
 
 
-def load_pr_lists() -> tuple[dict[str, list[dict[str, Any]]], dict[str, list[str]]]:
-    """Load review, team, and mine lists; return truncation notes per list."""
+def load_pr_lists(
+    details: bool = False,
+    watched: bool = False,
+) -> tuple[dict[str, list[dict[str, Any]]], dict[str, list[str]]]:
+    """Load PR buckets with truncation notes scoped to each bucket."""
     watch_teams = _list_setting("pr.watch_teams")
     watch_repos = _list_setting("pr.watch_repos")
-    query = build_graphql(watch_teams, watch_repos)
-    result = run_gh("api", "graphql", "-f", f"query={query}")
-    if result.returncode != 0:
-        raise click.ClickException(f"gh api graphql failed: {result.stderr.strip()}")
+    watch_owners = _list_setting("pr.watch_owners") if watched else []
+    query = build_graphql(watch_teams, watch_repos, watch_owners, details)
     try:
-        data = json.loads(result.stdout)["data"]
-    except (json.JSONDecodeError, KeyError, TypeError):
+        data = _gh_json("api", "graphql", "-f", f"query={query}")["data"]
+    except (KeyError, TypeError):
         raise click.ClickException(
             "gh returned unreadable pull request lists"
         ) from None
 
     viewer = data["viewer"]
     login = viewer["login"]
-    notes: dict[str, list[str]] = {"review": [], "team": [], "mine": []}
+    notes: dict[str, list[str]] = {
+        key: []
+        for key in (
+            ("review", "team", "mine", "watched")
+            if watched
+            else ("review", "team", "mine")
+        )
+    }
+    for values, kinds in (
+        (watch_teams, ("review", "team")),
+        (watch_repos, ("review",)),
+        (watch_owners, ("watched",)),
+    ):
+        if len(values) > MAX_WATCH:
+            for kind in kinds:
+                note = f"watch sources limited to {MAX_WATCH} entries per setting"
+                if note not in notes[kind]:
+                    notes[kind].append(note)
 
-    mine_page = (viewer.get("pullRequests") or {}).get("pageInfo") or {}
-    _note_truncation(notes, ("mine",), mine_page, "your pull requests")
-    search_page = (data.get("reviewSearch") or {}).get("pageInfo") or {}
-    _note_truncation(notes, ("review", "team"), search_page, "review request search")
-
-    mine_nodes = (viewer.get("pullRequests") or {}).get("nodes") or []
-    mine = [pr_from_node(n) for n in mine_nodes if n]
-    if any(p.pop("review_requests_truncated", False) for p in mine):
-        _note_truncation(notes, ("mine",), {"hasNextPage": True}, "reviewers on your pull requests")
-
+    mine_block = viewer.get("pullRequests") or {}
+    _note_truncation(notes, ("mine",), mine_block.get("pageInfo"), "your pull requests")
+    _note_truncation(
+        notes,
+        ("review", "team"),
+        (data.get("reviewSearch") or {}).get("pageInfo"),
+        "review request search",
+    )
+    mine = [pr_from_node(n, details) for n in mine_block.get("nodes") or [] if n]
     review: list[dict[str, Any]] = []
     team: list[dict[str, Any]] = []
+    watched_rows: list[dict[str, Any]] = []
     review_keys: set[tuple[str, int]] = set()
     team_keys: set[tuple[str, int]] = set()
+    watched_keys: set[tuple[str, int]] = set()
 
     def add_row(row: dict[str, Any], bucket: str) -> None:
         key = _row_key(row)
@@ -226,63 +297,69 @@ def load_pr_lists() -> tuple[dict[str, list[dict[str, Any]]], dict[str, list[str
             team_keys.discard(key)
             team[:] = [p for p in team if _row_key(p) != key]
             review.append(row)
-        else:
-            if key in review_keys:
+        elif bucket == "watched":
+            if key in review_keys or key in team_keys or key in watched_keys:
                 return
-            if key in team_keys:
+            watched_keys.add(key)
+            watched_rows.append(row)
+        else:
+            if key in review_keys or key in team_keys:
                 return
             team_keys.add(key)
             team.append(row)
 
     for node in (data.get("reviewSearch") or {}).get("nodes") or []:
-        if not node:
-            continue
-        row = pr_from_node(node)
-        kind = _classify_review(node, login)
-        if kind == "review":
-            add_row(row, "review")
-        elif kind == "team":
-            add_row(row, "team")
+        if node:
+            kind = _classify_review(node, login)
+            if kind:
+                add_row(pr_from_node(node, details), kind)
 
     for i, watched_team in enumerate(watch_teams[:MAX_WATCH]):
         block = data.get(f"watchTeam{i}") or {}
         _note_truncation(
-            notes, ("review", "team"), block.get("pageInfo"), f"watched team {watched_team}"
+            notes,
+            ("review", "team"),
+            block.get("pageInfo"),
+            f"watched team {watched_team}",
         )
         for node in block.get("nodes") or []:
-            if not node:
-                continue
-            row = pr_from_node(node)
-            kind = _classify_review(node, login)
-            if kind == "review":
-                add_row(row, "review")
-            else:
-                add_row(row, "team")
+            if node:
+                kind = _classify_review(node, login)
+                add_row(
+                    pr_from_node(node, details),
+                    "review" if kind == "review" else "team",
+                )
 
-    for i, watched_repo in enumerate(watch_repos[:MAX_WATCH]):
-        block = data.get(f"watchRepo{i}") or {}
-        _note_truncation(notes, ("review",), block.get("pageInfo"), f"watched repo {watched_repo}")
-        for node in block.get("nodes") or []:
-            if not node:
-                continue
-            row = pr_from_node(node)
-            if same_login(row["author"], login):
-                continue
-            add_row(row, "review")
+    for source, values, bucket in (
+        ("Repo", watch_repos, "review"),
+        ("Owner", watch_owners, "watched"),
+    ):
+        for i, value in enumerate(values[:MAX_WATCH]):
+            block = data.get(f"watch{source}{i}") or {}
+            _note_truncation(
+                notes,
+                (bucket,),
+                block.get("pageInfo"),
+                f"watched {source.lower()} {value}",
+            )
+            for node in block.get("nodes") or []:
+                if node:
+                    row = pr_from_node(node, details)
+                    if not same_login(row["author"], login):
+                        add_row(row, bucket)
 
-    for bucket, rows in (("review", review), ("team", team)):
-        if any([row.pop("review_requests_truncated", False) for row in rows]):
-            _note_truncation(notes, (bucket,), {"hasNextPage": True}, "reviewers on review requests")
-
+    lists = {"review": review, "team": team, "mine": mine, "watched": watched_rows}
+    for bucket, rows in lists.items():
+        source = (
+            "reviewers on your pull requests"
+            if bucket == "mine"
+            else "reviewers on review requests"
+        )
+        for row in rows:
+            if row.pop("review_requests_truncated", False):
+                _note_truncation(notes, (bucket,), {"hasNextPage": True}, source)
     sort_key = lambda pr: (pr["repo"], pr["number"])
-    return (
-        {
-            "review": sorted(review, key=sort_key),
-            "team": sorted(team, key=sort_key),
-            "mine": sorted(mine, key=sort_key),
-        },
-        notes,
-    )
+    return {bucket: sorted(rows, key=sort_key) for bucket, rows in lists.items()}, notes
 
 
 def clone(slug: str, dest: Path) -> None:
