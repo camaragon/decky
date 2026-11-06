@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import click
 
@@ -32,20 +34,23 @@ CHECK_STATES = {
 
 MAX_WATCH = 15
 
-PR_FIELDS = """
-fragment PrFields on PullRequest {
-  number
-  title
+DETAIL_FIELDS = """
   url
   body
   reviewDecision
+  labels(first: 100) { pageInfo { hasNextPage } nodes { name } }
+  latestOpinionatedReviews(first: 20) { pageInfo { hasNextPage } }"""
+
+PR_FIELDS = """
+fragment PrFields on PullRequest {
+  number
+  title%s
   isDraft
   updatedAt
   author { login }
   repository { nameWithOwner }
   commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
-  latestOpinionatedReviews(first: 20) { pageInfo { hasNextPage } nodes { state } }
-  labels(first: 100) { pageInfo { hasNextPage } nodes { name } }
+  latestOpinionatedReviews(first: 20) { nodes { state } }
   reviewRequests(first: 20) {
     pageInfo { hasNextPage }
     nodes { requestedReviewer { ... on User { login } ... on Team { slug } } }
@@ -76,6 +81,7 @@ def build_graphql(
     watch_teams: list[str],
     watch_repos: list[str],
     watch_owners: list[str] | None = None,
+    details: bool = False,
 ) -> str:
     extra = ""
     for i, team in enumerate(watch_teams[:MAX_WATCH]):
@@ -94,8 +100,9 @@ def build_graphql(
             extra += f"""
   watch{source}{i}: search(query: "{q}", type: ISSUE, first: 50) {{{SEARCH_NODES}
   }}"""
+    fields = PR_FIELDS % (DETAIL_FIELDS if details else "")
     return f"""
-{PR_FIELDS}
+{fields}
 
 query DeckyPrLists {{
   viewer {{
@@ -138,24 +145,15 @@ def run_gh(*args: str) -> subprocess.CompletedProcess[str]:
     raise AssertionError("unreachable")
 
 
-def pr_from_node(node: dict[str, Any]) -> dict[str, Any]:
+def pr_from_node(node: dict[str, Any], details: bool = False) -> dict[str, Any]:
     commits = (node.get("commits") or {}).get("nodes") or []
     rollup = commits[0]["commit"]["statusCheckRollup"] if commits else None
     state = rollup.get("state") if rollup else None
     reviews = (node.get("latestOpinionatedReviews") or {}).get("nodes") or []
     slug = node["repository"]["nameWithOwner"]
-    owner, name = slug.split("/", 1)
-    return {
+    row = {
         "number": node["number"],
         "repo": slug,
-        "repo_owner": owner,
-        "repo_name": name,
-        "url": node.get("url") or f"https://github.com/{slug}/pull/{node['number']}",
-        "body": node.get("body") or "",
-        "review_decision": node.get("reviewDecision"),
-        "labels": [
-            label["name"] for label in (node.get("labels") or {}).get("nodes", [])
-        ],
         "title": node["title"],
         "checks": CHECK_STATES.get(state, "none"),
         "approvals": sum(1 for r in reviews if r and r.get("state") == "APPROVED"),
@@ -172,6 +170,19 @@ def pr_from_node(node: dict[str, Any]) -> dict[str, Any]:
             )
         ),
     }
+    if details:
+        owner, name = slug.split("/", 1)
+        row.update(
+            repo_owner=owner,
+            repo_name=name,
+            url=node.get("url") or f"https://github.com/{slug}/pull/{node['number']}",
+            body=node.get("body") or "",
+            review_decision=node.get("reviewDecision"),
+            labels=[
+                label["name"] for label in (node.get("labels") or {}).get("nodes", [])
+            ],
+        )
+    return row
 
 
 def _gh_json(*args: str) -> Any:
@@ -190,7 +201,7 @@ def _gh_json(*args: str) -> Any:
 def load_pr(slug: str, number: int) -> tuple[dict[str, Any], list[str]]:
     owner, repo = slug.split("/")
     query = (
-        PR_FIELDS
+        (PR_FIELDS % DETAIL_FIELDS)
         + """
 query($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {
@@ -214,7 +225,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
     node = (data.get("repository") or {}).get("pullRequest")
     if not node:
         raise click.ClickException("pull request not found or inaccessible")
-    row = pr_from_node(node)
+    row = pr_from_node(node, details=True)
     notes: list[str] = []
     if row.pop("review_requests_truncated", False):
         _note_truncation(notes, {"hasNextPage": True})
@@ -287,12 +298,15 @@ def _row_key(row: dict[str, Any]) -> tuple[str, int]:
     return (row["repo"], row["number"])
 
 
-def load_pr_lists() -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
-    """Load review, team, and mine lists; return notes for truncation."""
+def load_pr_lists(
+    details: bool = False,
+    watched: bool = False,
+) -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
+    """Load review, team, mine, and watched lists; return notes for truncation."""
     watch_teams = _list_setting("pr.watch_teams")
     watch_repos = _list_setting("pr.watch_repos")
-    watch_owners = _list_setting("pr.watch_owners")
-    query = build_graphql(watch_teams, watch_repos, watch_owners)
+    watch_owners = _list_setting("pr.watch_owners") if watched else []
+    query = build_graphql(watch_teams, watch_repos, watch_owners, details)
     try:
         data = _gh_json("api", "graphql", "-f", f"query={query}")["data"]
     except (KeyError, TypeError):
@@ -314,15 +328,17 @@ def load_pr_lists() -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
     _note_truncation(notes, search_page)
 
     mine_nodes = (viewer.get("pullRequests") or {}).get("nodes") or []
-    mine = [pr_from_node(n) for n in mine_nodes if n]
+    mine = [pr_from_node(n, details) for n in mine_nodes if n]
     for row in mine:
         if row.pop("review_requests_truncated", False):
             _note_truncation(notes, {"hasNextPage": True})
 
     review: list[dict[str, Any]] = []
     team: list[dict[str, Any]] = []
+    watched: list[dict[str, Any]] = []
     review_keys: set[tuple[str, int]] = set()
     team_keys: set[tuple[str, int]] = set()
+    watched_keys: set[tuple[str, int]] = set()
 
     def add_row(row: dict[str, Any], bucket: str) -> None:
         key = _row_key(row)
@@ -336,6 +352,11 @@ def load_pr_lists() -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
             team_keys.discard(key)
             team[:] = [p for p in team if _row_key(p) != key]
             review.append(row)
+        elif bucket == "watched":
+            if key in review_keys or key in team_keys or key in watched_keys:
+                return
+            watched_keys.add(key)
+            watched.append(row)
         else:
             if key in review_keys:
                 return
@@ -347,7 +368,7 @@ def load_pr_lists() -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
     for node in (data.get("reviewSearch") or {}).get("nodes") or []:
         if not node:
             continue
-        row = pr_from_node(node)
+        row = pr_from_node(node, details)
         kind = _classify_review(node, login)
         if kind == "review":
             add_row(row, "review")
@@ -360,26 +381,29 @@ def load_pr_lists() -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
         for node in block.get("nodes") or []:
             if not node:
                 continue
-            row = pr_from_node(node)
+            row = pr_from_node(node, details)
             kind = _classify_review(node, login)
             if kind == "review":
                 add_row(row, "review")
             else:
                 add_row(row, "team")
 
-    for key in (
-        *(f"watchRepo{i}" for i in range(min(len(watch_repos), MAX_WATCH))),
-        *(f"watchOwner{i}" for i in range(min(len(watch_owners), MAX_WATCH))),
+    for key, bucket in (
+        *((f"watchRepo{i}", "review") for i in range(min(len(watch_repos), MAX_WATCH))),
+        *(
+            (f"watchOwner{i}", "watched")
+            for i in range(min(len(watch_owners), MAX_WATCH))
+        ),
     ):
         block = data.get(key) or {}
         _note_truncation(notes, block.get("pageInfo"))
         for node in block.get("nodes") or []:
             if not node:
                 continue
-            row = pr_from_node(node)
+            row = pr_from_node(node, details)
             if same_login(row["author"], login):
                 continue
-            add_row(row, "review")
+            add_row(row, bucket)
 
     sort_key = lambda pr: (pr["repo"], pr["number"])
     return (
@@ -387,23 +411,35 @@ def load_pr_lists() -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
             "review": sorted(review, key=sort_key),
             "team": sorted(team, key=sort_key),
             "mine": sorted(mine, key=sort_key),
+            "watched": sorted(watched, key=sort_key),
         },
         notes,
     )
 
 
-def clone(slug: str, dest: Path) -> int:
+def clone(slug: str, dest: Path) -> None:
     cmd = [
-        "git",
+        "gh",
+        "repo",
         "clone",
-        "--recurse-submodules",
-        f"git@github.com:{slug}.git",
+        f"github.com/{slug}",
         str(dest),
+        "--",
+        "--recurse-submodules",
     ]
-    return subprocess.run(cmd, check=False).returncode
+    try:
+        code = subprocess.run(cmd, check=False).returncode
+    except FileNotFoundError:
+        raise click.ClickException("gh not found; install the GitHub CLI") from None
+    if code != 0:
+        raise click.ClickException(
+            f"could not clone {slug} into {dest} (gh exit {code}); "
+            f"run `gh auth status`, confirm Git access to {slug} and its submodules, "
+            f"and remove {dest} if a partial checkout remains"
+        )
 
 
-def remote_matches(dest: Path, slug: str) -> bool:
+def origin_slug(dest: Path) -> str | None:
     result = subprocess.run(
         ["git", "-C", str(dest), "remote", "get-url", "origin"],
         capture_output=True,
@@ -411,10 +447,43 @@ def remote_matches(dest: Path, slug: str) -> bool:
         check=False,
     )
     if result.returncode != 0:
+        return None
+    url = result.stdout.strip()
+    if "://" in url:
+        try:
+            parsed = urlsplit(url)
+            if parsed.scheme not in {"https", "ssh"} or parsed.query or parsed.fragment:
+                return None
+            host = parsed.hostname
+            path = parsed.path.removeprefix("/")
+        except ValueError:
+            return None
+    else:
+        match = re.fullmatch(r"(?:[^@/\s]+@)?([^:/\s]+):([^?#\s]+)", url)
+        if not match:
+            return None
+        host, path = match.groups()
+    if host is None or host.lower() != "github.com":
+        return None
+    return path.lower().removesuffix(".git")
+
+
+def remote_matches(dest: Path, slug: str) -> bool:
+    origin = origin_slug(dest)
+    if origin is None:
         return False
-    url = result.stdout.strip().lower().removesuffix(".git")
-    slug = slug.lower()
-    return url.endswith((f":{slug}", f"/{slug}"))
+    if origin == slug.lower():
+        return True
+    result = run_gh(
+        "repo",
+        "view",
+        f"github.com/{slug}",
+        "--json",
+        "nameWithOwner",
+        "-q",
+        ".nameWithOwner",
+    )
+    return result.returncode == 0 and result.stdout.strip().lower() == origin
 
 
 def clone_or_reuse(slug: str, dest: Path) -> None:
@@ -423,9 +492,7 @@ def clone_or_reuse(slug: str, dest: Path) -> None:
             click.echo(f"using existing checkout {dest}")
             return
         raise click.ClickException(f"{dest} exists and is not {slug}")
-    code = clone(slug, dest)
-    if code != 0:
-        raise click.exceptions.Exit(code)
+    clone(slug, dest)
 
 
 def repo_slug(name: str, org: str | None) -> str:

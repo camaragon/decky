@@ -26,20 +26,26 @@ def _resolve_port(port: int | None) -> int:
 
 
 def _warn_non_loopback(host: str) -> None:
-    if host.lower() not in LOOPBACK and host not in ("0.0.0.0", "::"):
+    if host.lower() not in LOOPBACK:
         click.echo(
-            "warning: binding to a non-loopback address; mutating API routes have no auth",
+            "warning: binding to a non-loopback address; the server has no authentication; "
+            "Host filtering is not authentication",
             err=True,
         )
+
+
+def _http_url(host: str, port: int) -> str:
+    authority = f"[{host}]" if ":" in host else host
+    return f"http://{authority}:{port}/"
 
 
 def _open_ui(host: str, port: int, no_open: bool, dev: bool) -> None:
     if no_open or dev:
         return
     if host in ("0.0.0.0", "::"):
-        url = f"http://127.0.0.1:{port}/"
+        url = _http_url("127.0.0.1", port)
     else:
-        url = f"http://{host}:{port}/"
+        url = _http_url(host, port)
     browser.open_http_url(url)
 
 
@@ -49,19 +55,23 @@ def _open_ui(host: str, port: int, no_open: bool, dev: bool) -> None:
 @click.option("--no-open", is_flag=True)
 @click.option("--dev", is_flag=True)
 @config.option("server.log_level", "--log-level")
-def server_cmd(host: str, port: int | None, no_open: bool, dev: bool, log_level: str) -> None:
+def server_cmd(
+    host: str, port: int | None, no_open: bool, dev: bool, log_level: str
+) -> None:
     """Serve the decky web UI and API."""
     port = _resolve_port(port)
     level = (log_level or "warning").lower()
     if level not in LOG_LEVELS:
-        raise click.UsageError(f"--log-level must be one of {', '.join(sorted(LOG_LEVELS))}")
+        raise click.UsageError(
+            f"--log-level must be one of {', '.join(sorted(LOG_LEVELS))}"
+        )
     _warn_non_loopback(host)
     logging.getLogger("decky").setLevel(level.upper())
     static = None if dev else STATIC
     app = create_app(host=host, static=static)
     if dev:
         click.echo(
-            f"API on http://{host}:{port} (SPA via pnpm -C web dev at http://127.0.0.1:5173/)"
+            f"API on {_http_url(host, port)} (SPA via pnpm -C web dev at http://127.0.0.1:5173/)"
         )
     try:
         _open_ui(host, port, no_open, dev)

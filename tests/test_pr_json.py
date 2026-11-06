@@ -26,8 +26,8 @@ def node():
 @pytest.mark.parametrize(
     "flags,keys,numbers",
     [
-        ([], ["review", "team", "mine"], [8]),
-        (["--all"], ["review", "team", "mine"], [8, 9, 10, 11]),
+        ([], ["review", "team", "mine", "watched"], [8]),
+        (["--all"], ["review", "team", "mine", "watched"], [8, 9, 10, 11]),
         (["--mine"], ["mine"], []),
         (["--team"], ["team"], []),
     ],
@@ -89,11 +89,13 @@ def test_owner_sources_deduplicate_and_preserve_mine(monkeypatch, tmp_path, node
     monkeypatch.setenv("DECKY_PR_WATCH_OWNERS", "example,personal")
     monkeypatch.setenv("DECKY_PR_WATCH_REPOS", "example/api")
     own = _node("personal/app", 2, author="viewer")
+    team_only = _node("example/api", 5, user_request=False, team_request=True)
+    other = _node("example/web", 6, user_request=False)
     payload = {
         "viewer": {"login": "viewer", "pullRequests": {"nodes": [own]}},
-        "reviewSearch": {"nodes": [node]},
+        "reviewSearch": {"nodes": [node, team_only]},
         "watchRepo0": {"nodes": [node]},
-        "watchOwner0": {"nodes": [node]},
+        "watchOwner0": {"nodes": [node, team_only, other, other]},
         "watchOwner1": {"nodes": [own]},
     }
 
@@ -107,7 +109,49 @@ def test_owner_sources_deduplicate_and_preserve_mine(monkeypatch, tmp_path, node
     assert result.exit_code == 0, result.output
     buckets = json.loads(result.stdout)["buckets"]
     assert [p["number"] for p in buckets["review"]] == [8]
+    assert [p["number"] for p in buckets["team"]] == [5]
+    assert [p["number"] for p in buckets["watched"]] == [6]
     assert [p["number"] for p in buckets["mine"]] == [2]
+
+
+@pytest.mark.parametrize("flag", ["--mine", "--team"])
+def test_selected_json_skips_owner_search(monkeypatch, tmp_path, node, flag):
+    monkeypatch.setenv("DECKY_CONFIG", str(tmp_path / "config.toml"))
+    monkeypatch.setenv("DECKY_PR_WATCH_OWNERS", ",".join(f"o{i}" for i in range(16)))
+    payload = {
+        "viewer": {"login": "viewer", "pullRequests": {"nodes": [node]}},
+        "reviewSearch": {"nodes": []},
+    }
+
+    def fetch(*args):
+        assert "watchOwner" not in args[-1] and "body" in args[-1]
+        return subprocess.CompletedProcess([], 0, stdout=json.dumps({"data": payload}))
+
+    monkeypatch.setattr(github, "run_gh", fetch)
+    result = CliRunner().invoke(cli, ["pr", "list", "--json", flag])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["notes"] == []
+
+
+def test_non_json_callers_skip_details(monkeypatch, tmp_path, node):
+    monkeypatch.setenv("DECKY_CONFIG", str(tmp_path / "config.toml"))
+    monkeypatch.setenv("DECKY_PR_WATCH_OWNERS", ",".join(f"o{i}" for i in range(16)))
+    payload = {
+        "viewer": {"login": "viewer", "pullRequests": {"nodes": []}},
+        "reviewSearch": {"nodes": [node]},
+    }
+
+    def fetch(*args):
+        assert "body" not in args[-1] and "labels" not in args[-1]
+        assert "watchOwner" not in args[-1]
+        return subprocess.CompletedProcess([], 0, stdout=json.dumps({"data": payload}))
+
+    monkeypatch.setattr(github, "run_gh", fetch)
+    lists, notes = github.load_pr_lists()
+    assert notes == [] and lists["watched"] == []
+    assert not {"body", "labels", "review_decision", "repo_owner"} & set(
+        lists["review"][0]
+    )
 
 
 def test_truncated_metadata_does_not_leak_internal_flags(monkeypatch, node):

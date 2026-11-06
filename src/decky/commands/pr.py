@@ -37,19 +37,21 @@ def open_pr_action(template_key: str, name_prefix: str, slug: str, number: int) 
     command_template, _ = config.resolve(template_key)
     if not command_template:
         raise click.UsageError(f"set {template_key} (see decky config init)")
-    short = slug.rsplit("/", 1)[-1]
-    name = f"{name_prefix}-{short}-{number}"
+    slug = slug.lower()
+    # GitHub owner and repository names cannot contain "+".
+    identity = slug.replace("/", "+")
+    name = f"{name_prefix}-{identity}-{number}"
     parent, _ = config.resolve("pr.dir")
     dest_root = Path(parent or ".").expanduser().resolve()
     terminal, _ = config.resolve("terminal")
     backend = get_backend(terminal or "tmux")
     url = pr_url(slug, number)
+    dest_root.mkdir(parents=True, exist_ok=True)
+    dest = dest_root / identity
+    github.clone_or_reuse(slug, dest)
     if backend.focus_existing(name, url):
         click.echo(f"switched to open {name}")
         return
-    dest_root.mkdir(parents=True, exist_ok=True)
-    dest = dest_root / short
-    github.clone_or_reuse(slug, dest)
     command = review_tpl.interpolate(
         command_template, slug=slug, number=number, dest=dest
     )
@@ -224,11 +226,12 @@ def list_prs(
     if mine and team:
         raise click.UsageError("cannot use --mine and --team together")
     kind = "mine" if mine else "team" if team else "review"
-    use_interactive = False if as_json else config.interactive(interactive)
 
-    lists, truncation_notes = fetch_lists()
     if as_json:
-        selected = (kind,) if mine or team else KINDS
+        lists, truncation_notes = github.load_pr_lists(
+            details=True, watched=not (mine or team)
+        )
+        selected = (kind,) if mine or team else (*KINDS, "watched")
         filtered = {key: filter_prs(lists[key], show_all) for key in selected}
         click.echo(
             json.dumps(
@@ -241,6 +244,9 @@ def list_prs(
             )
         )
         return
+
+    use_interactive = config.interactive(interactive)
+    lists, truncation_notes = fetch_lists()
     if not use_interactive:
         prs, hidden = filter_prs(lists[kind], show_all)
         for note in truncation_notes:

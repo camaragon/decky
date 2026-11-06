@@ -12,7 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from decky.server.api import ActionFailed, State, router
+from decky.server.api import ActionFailed, State, allowed_host, router
 from decky.server import mcp as mcp_mod
 
 log = logging.getLogger(__name__)
@@ -44,6 +44,13 @@ def create_app(
     )
     app.state.decky = decky_state
 
+    @app.middleware("http")
+    async def validate_api_host(request: Request, call_next):
+        path = request.url.path
+        if (path == "/api" or path.startswith("/api/")) and not allowed_host(request):
+            return JSONResponse({"message": "host not allowed"}, status_code=421)
+        return await call_next(request)
+
     @app.exception_handler(ActionFailed)
     async def action_failed(_request: Request, exc: ActionFailed):
         return JSONResponse({"message": str(exc)}, status_code=422)
@@ -51,13 +58,16 @@ def create_app(
     @app.exception_handler(StarletteHTTPException)
     async def http_error(request: Request, exc: StarletteHTTPException):
         if request.url.path.startswith("/api"):
-            return JSONResponse({"message": str(exc.detail)}, status_code=exc.status_code)
+            return JSONResponse(
+                {"message": str(exc.detail)}, status_code=exc.status_code
+            )
         return await http_exception_handler(request, exc)
 
     @app.exception_handler(RequestValidationError)
     async def bad_input(_request: Request, exc: RequestValidationError):
         problems = "; ".join(
-            f"{'.'.join(str(p) for p in e['loc'][1:])}: {e['msg']}" for e in exc.errors()
+            f"{'.'.join(str(p) for p in e['loc'][1:])}: {e['msg']}"
+            for e in exc.errors()
         )
         return JSONResponse({"message": problems or "bad input"}, status_code=400)
 

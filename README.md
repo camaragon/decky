@@ -8,7 +8,7 @@ Install [uv](https://docs.astral.sh/uv/), then:
 uv tool install git+https://github.com/camaragon/decky.git
 ```
 
-You also need the [GitHub CLI](https://cli.github.com/) (`gh`) logged in for PR commands.
+You also need Git and the [GitHub CLI](https://cli.github.com/) (`gh`) logged in for PR commands. Review checkouts use `gh repo clone` with the configured GitHub protocol (`gh config get git_protocol --host github.com`), supporting HTTPS and SSH. Clones include submodules; their remotes need their own Git access and credentials. Clone progress streams to decky's terminal or server output; a failed clone stops the review with an error naming the exit code, the checkout path, and the GitHub authentication and Git access to check.
 
 ## Quick start
 
@@ -35,7 +35,7 @@ Default filters hide drafts, PRs whose checks are not `pass`, and authors listed
 ### JSON interface (version 1)
 
 ```bash
-decky pr list --json        # all three buckets, default filters
+decky pr list --json        # all four buckets, default filters
 decky pr list --json --all  # include hidden PRs
 decky pr list --json --mine # only the mine bucket (--team selects team)
 ```
@@ -44,8 +44,9 @@ JSON mode overrides interactive settings, including `-i`. Success prints one JSO
 object to stdout; failures exit nonzero with an error on stderr. An empty result
 uses empty arrays. `--mine` and `--team` remain mutually exclusive.
 
-List envelope: `{"version":1,"buckets":{"review":[],"team":[],"mine":[]},"hidden":{"review":0,"team":0,"mine":0},"notes":[]}`.
-Selection flags omit unselected bucket and hidden-count keys. `hidden` counts PRs
+List envelope: `{"version":1,"buckets":{"review":[],"team":[],"mine":[],"watched":[]},"hidden":{"review":0,"team":0,"mine":0,"watched":0},"notes":[]}`.
+`watched` holds PRs found only through `pr.watch_owners`. Selection flags omit
+unselected bucket and hidden-count keys. `hidden` counts PRs
 removed by the filters in each selected bucket; `notes` contains warning strings.
 
 Each PR has these fields (snake_case is part of the interface):
@@ -94,14 +95,14 @@ changed-file responses to 3000 files; `notes` warns if fewer files than
 
 ## `decky pr review`
 
-Opens or focuses a tmux window (default) or cmux workspace named `pr-<repo>-<number>`, runs `review.command`, and on the tmux path runs `browser.command` with the PR URL.
+Opens or focuses a tmux window (default) or cmux workspace named `pr-<owner>+<repo>-<number>`, runs `review.command`, and on the tmux path runs `browser.command` with the PR URL. Owner and repository names are normalized to lowercase; `+` cannot appear in GitHub names, so these never collide with legacy `pr-<repo>-<number>` surfaces.
 
 ```bash
 decky pr review owner/repo 123
 decky pr r my-repo 5    # requires work_org when REPO has no slash
 ```
 
-Checkout directory: `pr.dir/<repo-short>` (reused when origin matches; no `gh pr checkout`).
+Checkout directory: `pr.dir/<owner>+<repo>` (reused only when origin matches the GitHub host and exact owner/repository, or the repository GitHub redirects that owner/repository to after a rename or transfer; no `gh pr checkout`). The origin is checked before focusing an existing review surface. Legacy `<repo-short>` directories and `pr-<repo>-<number>` surfaces are left untouched; new reviews use the owner-qualified identity.
 
 `terminal = "tmux"` is the default. Windows live in session `decky`, or the current tmux session when `$TMUX` is set. Set `terminal = "cmux"` to use cmux instead (`browser.command` is ignored on that path).
 
@@ -110,6 +111,8 @@ Override the config path with `DECKY_CONFIG`.
 ## `decky server`
 
 Local web UI at `http://127.0.0.1:8777` (FastAPI + React). Review buttons use `review.command`. Optional `queue.command` prints `{today, mine, direct, team}` JSON for the PR queue sections; optional `jira.browse_url` links ticket keys.
+
+The server has no authentication. Keep the default loopback bind unless you trust everyone who can reach the listener. Non-loopback binds, including `0.0.0.0` and `::`, emit a warning. API Host filtering allows loopback names and the configured listen host; it is not authentication.
 
 ```bash
 pnpm -C web install && pnpm -C web build   # dev; git/wheel installs build the SPA automatically
@@ -124,6 +127,8 @@ Connect an MCP client:
 ```bash
 mcp add --transport http decky http://127.0.0.1:8777/mcp
 ```
+
+HTTP and MCP configuration writes share a lock within one server instance. Separate server processes, CLI commands and external editors do not share that lock.
 
 ## Config
 
@@ -143,7 +148,7 @@ Default file: `~/.config/decky/config.toml` (mode `600` on write).
 | `pr.hide_authors`  | `DECKY_PR_HIDE_AUTHORS`  | Hidden logins unless `--all`                                             |
 | `pr.watch_teams`   | `DECKY_PR_WATCH_TEAMS`   | Extra team review sources (`org/team`)                                   |
 | `pr.watch_repos`   | `DECKY_PR_WATCH_REPOS`   | Extra review candidates from `owner/repo`                                |
-| `pr.watch_owners`  | `DECKY_PR_WATCH_OWNERS`  | Extra review candidates across users or organizations                    |
+| `pr.watch_owners`  | `DECKY_PR_WATCH_OWNERS`  | Users or organizations for the JSON `watched` bucket                     |
 | `review.command`   | `DECKY_REVIEW_COMMAND`   | Review pane command template                                             |
 | `queue.command`    | `DECKY_QUEUE_COMMAND`    | Optional argv printing `{today, mine, direct, team}` JSON for the web UI |
 | `jira.browse_url`  | `DECKY_JIRA_BROWSE_URL`  | Optional `{key}` URL template for queue Jira links                       |
@@ -166,7 +171,6 @@ terminal = "tmux"
 
 [pr]
 dir = "~/prs"
-watch_owners = ["example-org", "example-user"]
 
 [review]
 command = "your-review-agent {url}"
@@ -179,7 +183,9 @@ Placeholders for `review.command` and `browser.command`: `{slug}` `{owner}` `{re
 
 Watched owners and repositories contribute open, non-archived PRs by other authors
 that you have not reviewed. Duplicates appear once; your own PRs stay in `mine`.
-Team sources contribute to `team` unless you are directly requested. All sources
+Team sources contribute to `team` unless you are directly requested. Watched
+repositories contribute to `review`; watched owners contribute only PRs absent from
+`review` and `team`, in the JSON `watched` bucket. All sources
 share the usual filters. List settings accept TOML arrays or comma-separated env values.
 
 ## License
