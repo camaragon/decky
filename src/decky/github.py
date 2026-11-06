@@ -230,11 +230,12 @@ def _row_key(row: dict[str, Any]) -> tuple[str, int]:
 
 def load_pr_lists(
     details: bool = False,
+    watched: bool = False,
 ) -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
     """Load review, team, mine, and watched lists; return notes for truncation."""
     watch_teams = _list_setting("pr.watch_teams")
     watch_repos = _list_setting("pr.watch_repos")
-    watch_owners = _list_setting("pr.watch_owners") if details else []
+    watch_owners = _list_setting("pr.watch_owners") if watched else []
     query = build_graphql(watch_teams, watch_repos, watch_owners, details)
     try:
         data = _gh_json("api", "graphql", "-f", f"query={query}")["data"]

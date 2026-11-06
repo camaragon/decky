@@ -114,6 +114,25 @@ def test_owner_sources_deduplicate_and_preserve_mine(monkeypatch, tmp_path, node
     assert [p["number"] for p in buckets["mine"]] == [2]
 
 
+@pytest.mark.parametrize("flag", ["--mine", "--team"])
+def test_selected_json_skips_owner_search(monkeypatch, tmp_path, node, flag):
+    monkeypatch.setenv("DECKY_CONFIG", str(tmp_path / "config.toml"))
+    monkeypatch.setenv("DECKY_PR_WATCH_OWNERS", ",".join(f"o{i}" for i in range(16)))
+    payload = {
+        "viewer": {"login": "viewer", "pullRequests": {"nodes": [node]}},
+        "reviewSearch": {"nodes": []},
+    }
+
+    def fetch(*args):
+        assert "watchOwner" not in args[-1] and "body" in args[-1]
+        return subprocess.CompletedProcess([], 0, stdout=json.dumps({"data": payload}))
+
+    monkeypatch.setattr(github, "run_gh", fetch)
+    result = CliRunner().invoke(cli, ["pr", "list", "--json", flag])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["notes"] == []
+
+
 def test_non_json_callers_skip_details(monkeypatch, tmp_path, node):
     monkeypatch.setenv("DECKY_CONFIG", str(tmp_path / "config.toml"))
     monkeypatch.setenv("DECKY_PR_WATCH_OWNERS", ",".join(f"o{i}" for i in range(16)))

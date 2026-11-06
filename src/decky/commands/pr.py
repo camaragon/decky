@@ -173,7 +173,9 @@ def list_prs(
     kind = "mine" if mine else "team" if team else "review"
 
     if as_json:
-        lists, truncation_notes = github.load_pr_lists(details=True)
+        lists, truncation_notes = github.load_pr_lists(
+            details=True, watched=not (mine or team)
+        )
         selected = (kind,) if mine or team else (*KINDS, "watched")
         filtered = {key: filter_prs(lists[key], show_all) for key in selected}
         click.echo(
