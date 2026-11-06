@@ -8,7 +8,7 @@ Install [uv](https://docs.astral.sh/uv/), then:
 uv tool install git+https://github.com/camaragon/decky.git
 ```
 
-You also need Git and the [GitHub CLI](https://cli.github.com/) (`gh`) logged in for PR commands. Review checkouts use `gh repo clone` with the configured GitHub protocol (`gh config get git_protocol --host github.com`), supporting HTTPS and SSH. Clones include submodules; their remotes need their own Git access and credentials. Clone progress streams to the terminal, and a failed clone stops the review with an actionable error.
+You also need Git and the [GitHub CLI](https://cli.github.com/) (`gh`) logged in for PR commands. Review checkouts use `gh repo clone` with the configured GitHub protocol (`gh config get git_protocol --host github.com`), supporting HTTPS and SSH. Clones include submodules; their remotes need their own Git access and credentials. Clone progress streams to decky's terminal or server output; a failed clone stops the review with an error naming the exit code, the checkout path, and the GitHub authentication and Git access to check.
 
 ## Quick start
 

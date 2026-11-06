@@ -295,8 +295,9 @@ def clone(slug: str, dest: Path) -> None:
         raise click.ClickException("gh not found; install the GitHub CLI") from None
     if code != 0:
         raise click.ClickException(
-            f"could not clone {slug} (exit {code}); see the output above, "
-            "then check gh auth status and Git access to the repository and its submodules"
+            f"could not clone {slug} into {dest} (gh exit {code}); "
+            f"run `gh auth status`, confirm Git access to {slug} and its submodules, "
+            f"and remove {dest} if a partial checkout remains"
         )
 
 

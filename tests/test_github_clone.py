@@ -97,10 +97,13 @@ def test_clone_failure_is_actionable(
     monkeypatch.setattr(
         subprocess, "run", lambda *a, **k: subprocess.CompletedProcess([], 128)
     )
-    with pytest.raises(
-        click.ClickException, match=r"clone org/repo \(exit 128\).*gh auth"
-    ):
-        github.clone_or_reuse("org/repo", tmp_path / "repo")
+    dest = tmp_path / "repo"
+    with pytest.raises(click.ClickException) as raised:
+        github.clone_or_reuse("org/repo", dest)
+    message = raised.value.message
+    assert "org/repo" in message and str(dest) in message
+    assert "exit 128" in message and "gh auth status" in message
+    assert "above" not in message
 
 
 def test_clone_reports_missing_gh(
