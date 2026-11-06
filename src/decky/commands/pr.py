@@ -33,20 +33,24 @@ def open_pr_action(template_key: str, name_prefix: str, slug: str, number: int) 
     command_template, _ = config.resolve(template_key)
     if not command_template:
         raise click.UsageError(f"set {template_key} (see decky config init)")
-    short = slug.rsplit("/", 1)[-1]
-    name = f"{name_prefix}-{short}-{number}"
+    slug = slug.lower()
+    # GitHub owner and repository names cannot contain "+".
+    identity = slug.replace("/", "+")
+    name = f"{name_prefix}-{identity}-{number}"
     parent, _ = config.resolve("pr.dir")
     dest_root = Path(parent or ".").expanduser().resolve()
     terminal, _ = config.resolve("terminal")
     backend = get_backend(terminal or "tmux")
     url = pr_url(slug, number)
+    dest_root.mkdir(parents=True, exist_ok=True)
+    dest = dest_root / identity
+    github.clone_or_reuse(slug, dest)
     if backend.focus_existing(name, url):
         click.echo(f"switched to open {name}")
         return
-    dest_root.mkdir(parents=True, exist_ok=True)
-    dest = dest_root / short
-    github.clone_or_reuse(slug, dest)
-    command = review_tpl.interpolate(command_template, slug=slug, number=number, dest=dest)
+    command = review_tpl.interpolate(
+        command_template, slug=slug, number=number, dest=dest
+    )
     backend.open(name, dest, command, url)
 
 
@@ -93,7 +97,7 @@ def pr_header(drafts: bool) -> tuple[str, ...]:
 
 
 def pr_cells(p: dict, drafts: bool) -> tuple[str, ...]:
-    draft = (("yes" if p["draft"] else "no",) if drafts else ())
+    draft = ("yes" if p["draft"] else "no",) if drafts else ()
     return (
         f"#{p['number']}",
         p["repo"],
@@ -113,7 +117,9 @@ def pr_rows(prs: list[dict], header: bool = False, drafts: bool = False) -> list
         return []
     widths = [max(len(row[i]) for row in cells) for i in range(len(cells[0]) - 1)]
     return [
-        "  ".join(cell.ljust(width) for cell, width in zip(row, widths)) + "  " + row[-1]
+        "  ".join(cell.ljust(width) for cell, width in zip(row, widths))
+        + "  "
+        + row[-1]
         for row in cells
     ]
 
@@ -141,7 +147,13 @@ def review(repo: str, number: int, org: str | None) -> None:
 @config.interactive_option(
     "Select a PR; Enter review, o opens the URL, tab cycles lists, a toggles --all."
 )
-@click.option("-a", "--all", "show_all", is_flag=True, help="Show drafts, failing checks, and hidden authors.")
+@click.option(
+    "-a",
+    "--all",
+    "show_all",
+    is_flag=True,
+    help="Show drafts, failing checks, and hidden authors.",
+)
 @click.option("-m", "--mine", is_flag=True, help="List PRs you opened.")
 @click.option("-t", "--team", is_flag=True, help="List team review requests.")
 def list_prs(

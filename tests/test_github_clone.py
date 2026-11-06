@@ -18,7 +18,178 @@ def test_remote_matches_ssh(monkeypatch: pytest.MonkeyPatch) -> None:
     assert github.remote_matches(dest, "org/repo")
 
 
-def test_clone_or_reuse_existing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "origin, matches",
+    [
+        ("https://github.com/Org/Repo.git", True),
+        ("ssh://git@github.com/Org/Repo.git", True),
+        ("git@GITHUB.COM:Org/Repo", True),
+        ("https://github.com/org/repo", True),
+        ("git@other.example:org/repo.git", False),
+        ("https://other.example/org/repo.git", False),
+        ("ssh://git@other.example/org/repo.git", False),
+        ("https://github.com/prefix/org/repo.git", False),
+        ("git@github.com:prefix/org/repo.git", False),
+        ("https://github.com/other/repo.git", False),
+        ("git@github.com:org/other.git", False),
+        ("https://github.com.evil.example/org/repo.git", False),
+        ("https://github.com@other.example/org/repo.git", False),
+        ("https://github.com/org/repo.git?other", False),
+        ("file:///org/repo", False),
+        ("/org/repo", False),
+        ("https://[broken/org/repo", False),
+    ],
+)
+def test_checkout_origin_identity(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, origin: str, matches: bool
+) -> None:
+    dest = tmp_path / "repo"
+    dest.mkdir()
+    marker = dest / "keep"
+    marker.write_text("unchanged")
+    calls = []
+
+    def run(cmd, **kwargs):
+        calls.append(cmd)
+        out = "Org/Repo" if cmd[0] == "gh" else origin
+        return subprocess.CompletedProcess(cmd, 0, stdout=out + "\n")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    if matches:
+        github.clone_or_reuse("org/repo", dest)
+    else:
+        with pytest.raises(click.ClickException, match="exists and is not"):
+            github.clone_or_reuse("org/repo", dest)
+    assert calls[0] == ["git", "-C", str(dest), "remote", "get-url", "origin"]
+    assert all(cmd[:3] == ["gh", "repo", "view"] for cmd in calls[1:])
+    assert marker.read_text() == "unchanged"
+
+
+@pytest.mark.parametrize(
+    "origin, canonical, matches",
+    [
+        ("https://github.com/new-owner/repo.git", "New-Owner/repo", True),
+        ("git@github.com:new-owner/renamed.git", "new-owner/renamed", True),
+        ("https://github.com/new-owner/repo.git", "other/repo", False),
+        ("git@other.example:new-owner/repo.git", "new-owner/repo", False),
+        ("https://github.com/prefix/new-owner/repo", "new-owner/repo", False),
+    ],
+)
+def test_redirected_repository_checkout_is_reused(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    origin: str,
+    canonical: str,
+    matches: bool,
+) -> None:
+    dest = tmp_path / "old-owner+repo"
+    dest.mkdir()
+    calls = []
+
+    def run(cmd, **kwargs):
+        calls.append(cmd)
+        out = canonical if cmd[0] == "gh" else origin
+        return subprocess.CompletedProcess(cmd, 0, stdout=out + "\n")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    if matches:
+        github.clone_or_reuse("old-owner/repo", dest)
+    else:
+        with pytest.raises(click.ClickException, match="exists and is not"):
+            github.clone_or_reuse("old-owner/repo", dest)
+    assert not any(cmd[:3] == ["gh", "repo", "clone"] for cmd in calls)
+    assert [cmd for cmd in calls if cmd[0] == "gh"] in (
+        [],
+        [
+            [
+                "gh",
+                "repo",
+                "view",
+                "github.com/old-owner/repo",
+                "--json",
+                "nameWithOwner",
+                "-q",
+                ".nameWithOwner",
+            ]
+        ],
+    )
+
+
+def test_redirect_lookup_failure_refuses_checkout(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    dest = tmp_path / "old-owner+repo"
+    dest.mkdir()
+
+    def run(cmd, **kwargs):
+        if cmd[0] == "gh":
+            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="not found")
+        return subprocess.CompletedProcess(
+            cmd, 0, stdout="https://github.com/new-owner/repo.git\n"
+        )
+
+    monkeypatch.setattr(subprocess, "run", run)
+    with pytest.raises(click.ClickException, match="exists and is not"):
+        github.clone_or_reuse("old-owner/repo", dest)
+
+
+def test_first_checkout_uses_configured_protocol(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    dest = tmp_path / "repo"
+    calls = []
+
+    def run(cmd, **kwargs):
+        calls.append(cmd)
+        # A host-qualified, scheme-free name lets gh select HTTPS or SSH.
+        assert cmd == [
+            "gh",
+            "repo",
+            "clone",
+            "github.com/org/repo",
+            str(dest),
+            "--",
+            "--recurse-submodules",
+        ]
+        assert not {"capture_output", "stdout", "stderr"} & kwargs.keys()
+        (dest / ".git").mkdir(parents=True)
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(subprocess, "run", run)
+    github.clone_or_reuse("org/repo", dest)
+    assert len(calls) == 1
+    assert (dest / ".git").is_dir()
+
+
+def test_clone_failure_is_actionable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        subprocess, "run", lambda *a, **k: subprocess.CompletedProcess([], 128)
+    )
+    dest = tmp_path / "repo"
+    with pytest.raises(click.ClickException) as raised:
+        github.clone_or_reuse("org/repo", dest)
+    message = raised.value.message
+    assert "org/repo" in message and str(dest) in message
+    assert "exit 128" in message and "gh auth status" in message
+    assert "above" not in message
+
+
+def test_clone_reports_missing_gh(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def run(*a, **k):
+        raise FileNotFoundError("gh")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    with pytest.raises(click.ClickException, match="gh not found"):
+        github.clone_or_reuse("org/repo", tmp_path / "repo")
+
+
+def test_clone_or_reuse_existing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     dest = tmp_path / "api"
     dest.mkdir()
     monkeypatch.setattr(github, "remote_matches", lambda d, s: True)
@@ -28,7 +199,9 @@ def test_clone_or_reuse_existing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     assert clone_called == []
 
 
-def test_clone_or_reuse_mismatch(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_clone_or_reuse_mismatch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     dest = tmp_path / "api"
     dest.mkdir()
     monkeypatch.setattr(github, "remote_matches", lambda d, s: False)
