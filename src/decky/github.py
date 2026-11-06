@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import click
 
@@ -141,7 +143,9 @@ def pr_from_node(node: dict[str, Any]) -> dict[str, Any]:
         "author": (node.get("author") or {}).get("login") or "",
         "updated_at": node.get("updatedAt") or "",
         "review_requests_truncated": bool(
-            ((node.get("reviewRequests") or {}).get("pageInfo") or {}).get("hasNextPage")
+            ((node.get("reviewRequests") or {}).get("pageInfo") or {}).get(
+                "hasNextPage"
+            )
         ),
     }
 
@@ -187,7 +191,9 @@ def load_pr_lists() -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
     try:
         data = json.loads(result.stdout)["data"]
     except (json.JSONDecodeError, KeyError, TypeError):
-        raise click.ClickException("gh returned unreadable pull request lists") from None
+        raise click.ClickException(
+            "gh returned unreadable pull request lists"
+        ) from None
 
     viewer = data["viewer"]
     login = viewer["login"]
@@ -273,9 +279,16 @@ def load_pr_lists() -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
     )
 
 
-def clone(slug: str, dest: Path) -> int:
-    cmd = ["git", "clone", "--recurse-submodules", f"git@github.com:{slug}.git", str(dest)]
-    return subprocess.run(cmd).returncode
+def clone(slug: str, dest: Path) -> None:
+    result = run_gh(
+        "repo", "clone", f"github.com/{slug}", str(dest), "--", "--recurse-submodules"
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()[:500]
+        raise click.ClickException(
+            f"could not clone {slug}; check gh auth status and Git access"
+            + (f": {detail}" if detail else "")
+        )
 
 
 def remote_matches(dest: Path, slug: str) -> bool:
@@ -287,9 +300,26 @@ def remote_matches(dest: Path, slug: str) -> bool:
     )
     if result.returncode != 0:
         return False
-    url = result.stdout.strip().lower().removesuffix(".git")
-    slug = slug.lower()
-    return url.endswith(f":{slug}") or url.endswith(f"/{slug}")
+    url = result.stdout.strip()
+    if "://" in url:
+        try:
+            parsed = urlsplit(url)
+            if parsed.scheme not in {"https", "ssh"} or parsed.query or parsed.fragment:
+                return False
+            host = parsed.hostname
+            path = parsed.path.removeprefix("/")
+        except ValueError:
+            return False
+    else:
+        match = re.fullmatch(r"(?:[^@/\s]+@)?([^:/\s]+):([^?#\s]+)", url)
+        if not match:
+            return False
+        host, path = match.groups()
+    return (
+        host is not None
+        and host.lower() == "github.com"
+        and path.lower().removesuffix(".git") == slug.lower()
+    )
 
 
 def clone_or_reuse(slug: str, dest: Path) -> None:
@@ -298,9 +328,7 @@ def clone_or_reuse(slug: str, dest: Path) -> None:
             click.echo(f"using existing checkout {dest}")
             return
         raise click.ClickException(f"{dest} exists and is not {slug}")
-    code = clone(slug, dest)
-    if code != 0:
-        raise click.exceptions.Exit(code)
+    clone(slug, dest)
 
 
 def repo_slug(name: str, org: str | None) -> str:

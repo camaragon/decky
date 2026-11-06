@@ -8,7 +8,7 @@ Install [uv](https://docs.astral.sh/uv/), then:
 uv tool install git+https://github.com/camaragon/decky.git
 ```
 
-You also need the [GitHub CLI](https://cli.github.com/) (`gh`) logged in for PR commands.
+You also need Git and the [GitHub CLI](https://cli.github.com/) (`gh`) logged in for PR commands. Review checkouts use `gh repo clone` with the configured GitHub protocol (`gh config get git_protocol --host github.com`), supporting HTTPS and SSH. Clones include submodules; their remotes need their own Git access and credentials.
 
 ## Quick start
 
@@ -34,14 +34,14 @@ Default filters hide drafts, PRs whose checks are not `pass`, and authors listed
 
 ## `decky pr review`
 
-Opens or focuses a tmux window (default) or cmux workspace named `pr-<repo>-<number>`, runs `review.command`, and on the tmux path runs `browser.command` with the PR URL.
+Opens or focuses a tmux window (default) or cmux workspace named `pr-<owner>__<repo>-<number>`, runs `review.command`, and on the tmux path runs `browser.command` with the PR URL. Owner and repository names are normalized to lowercase.
 
 ```bash
 decky pr review owner/repo 123
 decky pr r my-repo 5    # requires work_org when REPO has no slash
 ```
 
-Checkout directory: `pr.dir/<repo-short>` (reused when origin matches; no `gh pr checkout`).
+Checkout directory: `pr.dir/<owner>__<repo>` (reused only when origin matches the GitHub host and exact owner/repository; no `gh pr checkout`). The origin is checked before focusing an existing review surface. Legacy `<repo-short>` directories and `pr-<repo>-<number>` surfaces are left untouched; new reviews use the owner-qualified identity.
 
 `terminal = "tmux"` is the default. Windows live in session `decky`, or the current tmux session when `$TMUX` is set. Set `terminal = "cmux"` to use cmux instead (`browser.command` is ignored on that path).
 
@@ -75,25 +75,25 @@ mcp add --transport http decky http://127.0.0.1:8777/mcp
 
 Default file: `~/.config/decky/config.toml` (mode `600` on write).
 
-| Key | Env | Purpose |
-| --- | --- | --- |
-| `work_org` | `DECKY_WORK_ORG` | Owner for bare repo names |
-| `interactive` | `DECKY_INTERACTIVE` | Default `-i` when stdin/stdout are a TTY |
-| `pr.dir` | `DECKY_PR_DIR` | Parent directory for checkouts |
-| `pr.hide_authors` | `DECKY_PR_HIDE_AUTHORS` | Hidden logins unless `--all` |
-| `review.command` | `DECKY_REVIEW_COMMAND` | Review pane command template |
-| `queue.command` | `DECKY_QUEUE_COMMAND` | Optional argv printing `{today, mine, direct, team}` JSON for the web UI |
-| `jira.browse_url` | `DECKY_JIRA_BROWSE_URL` | Optional `{key}` URL template for queue Jira links |
-| `terminal` | `DECKY_TERMINAL` | `tmux` (default) or `cmux` |
-| `tmux.bin` | `DECKY_TMUX_BIN` | tmux binary |
-| `tmux.session` | `DECKY_TMUX_SESSION` | Session for PR windows |
-| `browser.command` | `DECKY_BROWSER_COMMAND` | Opens PR URL on tmux path |
-| `cmux.bin` | `DECKY_CMUX_BIN` | cmux binary |
-| `cmux.group` | `DECKY_CMUX_GROUP` | Workspace group (cmux path) |
-| `server.host` | `DECKY_SERVER_HOST` | Bind address (default `127.0.0.1`) |
-| `server.port` | `DECKY_SERVER_PORT` | Listen port (default `8777`) |
-| `server.log_level` | `DECKY_SERVER_LOG_LEVEL` | App log level (`debug` … `error`) |
-| `status.command` | `DECKY_STATUS_COMMAND` | Optional argv printing waiting/running JSON |
+| Key                | Env                      | Purpose                                                                  |
+| ------------------ | ------------------------ | ------------------------------------------------------------------------ |
+| `work_org`         | `DECKY_WORK_ORG`         | Owner for bare repo names                                                |
+| `interactive`      | `DECKY_INTERACTIVE`      | Default `-i` when stdin/stdout are a TTY                                 |
+| `pr.dir`           | `DECKY_PR_DIR`           | Parent directory for checkouts                                           |
+| `pr.hide_authors`  | `DECKY_PR_HIDE_AUTHORS`  | Hidden logins unless `--all`                                             |
+| `review.command`   | `DECKY_REVIEW_COMMAND`   | Review pane command template                                             |
+| `queue.command`    | `DECKY_QUEUE_COMMAND`    | Optional argv printing `{today, mine, direct, team}` JSON for the web UI |
+| `jira.browse_url`  | `DECKY_JIRA_BROWSE_URL`  | Optional `{key}` URL template for queue Jira links                       |
+| `terminal`         | `DECKY_TERMINAL`         | `tmux` (default) or `cmux`                                               |
+| `tmux.bin`         | `DECKY_TMUX_BIN`         | tmux binary                                                              |
+| `tmux.session`     | `DECKY_TMUX_SESSION`     | Session for PR windows                                                   |
+| `browser.command`  | `DECKY_BROWSER_COMMAND`  | Opens PR URL on tmux path                                                |
+| `cmux.bin`         | `DECKY_CMUX_BIN`         | cmux binary                                                              |
+| `cmux.group`       | `DECKY_CMUX_GROUP`       | Workspace group (cmux path)                                              |
+| `server.host`      | `DECKY_SERVER_HOST`      | Bind address (default `127.0.0.1`)                                       |
+| `server.port`      | `DECKY_SERVER_PORT`      | Listen port (default `8777`)                                             |
+| `server.log_level` | `DECKY_SERVER_LOG_LEVEL` | App log level (`debug` … `error`)                                        |
+| `status.command`   | `DECKY_STATUS_COMMAND`   | Optional argv printing waiting/running JSON                              |
 
 Example (also written by `decky config init`):
 
