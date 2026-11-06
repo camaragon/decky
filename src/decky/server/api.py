@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass, field
+from ipaddress import ip_address
+from urllib.parse import urlsplit
 
 import click
 from fastapi import APIRouter, HTTPException, Request
@@ -28,6 +30,11 @@ class State:
     lock: threading.RLock = field(default_factory=threading.RLock)
     listen_host: str = "127.0.0.1"
 
+    def save_setting(self, key: str, value: str, *, unset: bool = False) -> str:
+        """Serialize read-modify-write operations within this server instance."""
+        with self.lock:
+            return views.save_setting(key, value, unset=unset)
+
 
 def state(request: Request) -> State:
     return request.app.state.decky
@@ -36,23 +43,41 @@ def state(request: Request) -> State:
 router = APIRouter(prefix="/api")
 
 
+def _normalize_host(host: str) -> str:
+    try:
+        return ip_address(host).compressed
+    except ValueError:
+        return host.lower()
+
+
 def allowed_host(request: Request) -> bool:
-    host_header = (request.headers.get("host") or "").split(":")[0].lower()
+    headers = request.headers.getlist("host")
+    if len(headers) != 1:
+        return False
+    authority = headers[0]
+    if (
+        not authority
+        or authority.endswith(":")
+        or any(c.isspace() or c in "/\\?#@," for c in authority)
+    ):
+        return False
+    try:
+        parsed = urlsplit(f"//{authority}")
+        host_header = parsed.hostname
+        # Accessing port validates its syntax and range.
+        parsed.port
+        if authority.startswith("["):
+            suffix = authority.partition("]")[2]
+            if suffix and not suffix.startswith(":"):
+                return False
+        elif authority.count(":") > 1:
+            return False
+    except ValueError:
+        return False
     if not host_header:
         return False
-    listen = state(request).listen_host.lower()
-    if host_header in {listen, "localhost", "127.0.0.1", "::1", "[::1]"}:
-        return True
-    if listen in ("0.0.0.0", "::") and host_header in {"localhost", "127.0.0.1", "::1", "[::1]"}:
-        return True
-    return False
-
-
-def require_local_host(request: Request) -> None:
-    if request.method in ("GET", "HEAD", "OPTIONS"):
-        return
-    if not allowed_host(request):
-        raise HTTPException(421, "host not allowed")
+    listen = _normalize_host(state(request).listen_host)
+    return _normalize_host(host_header) in {listen, "localhost", "127.0.0.1", "::1"}
 
 
 @router.get("/meta")
@@ -86,7 +111,6 @@ class PrBody(BaseModel):
 
 @router.post("/prs/review")
 def review_pr(body: PrBody, request: Request) -> dict:
-    require_local_host(request)
     with state(request).lock:
         try:
             pr_cmd.open_review(body.repo, body.number)
@@ -117,7 +141,6 @@ class UrlBody(BaseModel):
 
 @router.post("/open-url")
 def open_url(body: UrlBody, request: Request) -> dict:
-    require_local_host(request)
     if not body.url.startswith(("http://", "https://")):
         raise HTTPException(400, "url must start with http:// or https://")
     with state(request).lock:
@@ -139,29 +162,25 @@ class ValueBody(BaseModel):
 
 @router.put("/config/{key}")
 def set_config(key: str, body: ValueBody, request: Request) -> dict:
-    require_local_host(request)
     try:
         config.setting(key)
     except click.BadParameter as e:
         raise HTTPException(400, str(e)) from e
-    with state(request).lock:
-        try:
-            message = views.save_setting(key, body.value, unset=False)
-        except views.SettingError as e:
-            raise ActionFailed(str(e)) from e
+    try:
+        message = state(request).save_setting(key, body.value)
+    except views.SettingError as e:
+        raise ActionFailed(str(e)) from e
     return {"message": message}
 
 
 @router.delete("/config/{key}")
 def unset_config(key: str, request: Request) -> dict:
-    require_local_host(request)
     try:
         config.setting(key)
     except click.BadParameter as e:
         raise HTTPException(400, str(e)) from e
-    with state(request).lock:
-        try:
-            message = views.save_setting(key, "", unset=True)
-        except views.SettingError as e:
-            raise ActionFailed(str(e)) from e
+    try:
+        message = state(request).save_setting(key, "", unset=True)
+    except views.SettingError as e:
+        raise ActionFailed(str(e)) from e
     return {"message": message}
