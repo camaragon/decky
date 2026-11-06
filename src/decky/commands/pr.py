@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import re
+from html import unescape
+from html.parser import HTMLParser
 from pathlib import Path
 
 import click
@@ -140,6 +143,58 @@ def pr() -> None:
 def review(repo: str, number: int, org: str | None) -> None:
     """Open or focus a review workspace for REPO NUMBER."""
     open_review(github.repo_slug(repo, org), number)
+
+
+def image_urls(body: str) -> list[str]:
+    urls: list[str] = []
+
+    class Images(HTMLParser):
+        def handle_starttag(
+            self, tag: str, attrs: list[tuple[str, str | None]]
+        ) -> None:
+            if tag == "img":
+                urls.extend(value for key, value in attrs if key == "src" and value)
+
+    Images().feed(body)
+    for match in re.finditer(
+        r"!\[[^\]]*\]\(\s*(?:<([^>]+)>|((?:[^\s()]|\([^)]*\))+))", body
+    ):
+        urls.append(unescape(match[1] or match[2]))
+    references = dict(re.findall(r"(?m)^\s*\[([^\]]+)\]:\s*<?(https?://[^\s>]+)", body))
+    for match in re.finditer(r"!\[([^\]]*)\]\[([^\]]*)\]", body):
+        url = references.get(match[2] or match[1])
+        if url:
+            urls.append(unescape(url))
+    for match in re.finditer(r"https?://[^\s<>\"']+", body):
+        url = unescape(match[0]).rstrip(".,;]}")
+        while url.endswith(")") and url.count(")") > url.count("("):
+            url = url[:-1]
+        if (
+            url.split("?", 1)[0]
+            .split("#", 1)[0]
+            .lower()
+            .endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"))
+            or "/user-attachments/assets/" in url
+        ):
+            urls.append(url)
+    return list(
+        dict.fromkeys(url for url in urls if url.startswith(("http://", "https://")))
+    )
+
+
+@pr.command()
+@click.argument("repo")
+@click.argument("number", type=click.IntRange(min=1))
+@click.option(
+    "--json", "as_json", is_flag=True, required=True, help="Emit versioned PR details."
+)
+def show(repo: str, number: int, as_json: bool) -> None:
+    """Fetch REPO (OWNER/NAME) NUMBER without opening a workspace."""
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
+        raise click.BadParameter("expected OWNER/REPO", param_hint="repo")
+    row, notes = github.load_pr(repo, number)
+    row["image_urls"] = image_urls(row["body"])
+    click.echo(json.dumps({"version": 1, "pr": row, "notes": notes}))
 
 
 @pr.command(name="list")

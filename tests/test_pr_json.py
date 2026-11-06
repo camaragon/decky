@@ -108,3 +108,29 @@ def test_owner_sources_deduplicate_and_preserve_mine(monkeypatch, tmp_path, node
     buckets = json.loads(result.stdout)["buckets"]
     assert [p["number"] for p in buckets["review"]] == [8]
     assert [p["number"] for p in buckets["mine"]] == [2]
+
+
+def test_truncated_metadata_does_not_leak_internal_flags(monkeypatch, node):
+    node["latestOpinionatedReviews"]["pageInfo"] = {"hasNextPage": True}
+    payload = {
+        "viewer": {
+            "login": "viewer",
+            "pullRequests": {"nodes": [node, _node("example/api", 9)]},
+        },
+        "reviewSearch": {"nodes": []},
+    }
+    monkeypatch.setattr(
+        github,
+        "run_gh",
+        lambda *a: subprocess.CompletedProcess(
+            [], 0, stdout=json.dumps({"data": payload})
+        ),
+    )
+    result = CliRunner().invoke(cli, ["pr", "list", "--json", "--mine", "--all"])
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)
+    assert data["notes"] == ["list truncated at GitHub page size"]
+    assert len(data["buckets"]["mine"]) == 2
+    assert all(
+        "review_requests_truncated" not in row for row in data["buckets"]["mine"]
+    )

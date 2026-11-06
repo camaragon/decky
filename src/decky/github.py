@@ -187,6 +187,76 @@ def _gh_json(*args: str) -> Any:
     return payload
 
 
+def load_pr(slug: str, number: int) -> tuple[dict[str, Any], list[str]]:
+    owner, repo = slug.split("/")
+    query = (
+        PR_FIELDS
+        + """
+query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $number) { ...PrFields changedFiles headRefOid }
+  }
+}
+"""
+    )
+    data = _gh_json(
+        "api",
+        "graphql",
+        "-f",
+        f"query={query}",
+        "-f",
+        f"owner={owner}",
+        "-f",
+        f"repo={repo}",
+        "-F",
+        f"number={number}",
+    )["data"]
+    node = (data.get("repository") or {}).get("pullRequest")
+    if not node:
+        raise click.ClickException("pull request not found or inaccessible")
+    row = pr_from_node(node)
+    notes: list[str] = []
+    if row.pop("review_requests_truncated", False):
+        _note_truncation(notes, {"hasNextPage": True})
+    files = _gh_json(
+        "api",
+        f"repos/{slug}/pulls/{number}/files?per_page=100",
+        "--paginate",
+        "--slurp",
+    )
+    row["files"] = [
+        {
+            "path": f["filename"],
+            "additions": f["additions"],
+            "deletions": f["deletions"],
+        }
+        for page in files
+        for f in page
+    ]
+    row["changed_files"] = node["changedFiles"]
+    if len(row["files"]) < row["changed_files"]:
+        notes.append("changed files truncated by GitHub (maximum 3000)")
+    commit = f"repos/{slug}/commits/{node['headRefOid']}"
+    runs = _gh_json("api", f"{commit}/check-runs?per_page=100", "--paginate", "--slurp")
+    statuses = _gh_json("api", f"{commit}/status?per_page=100", "--paginate", "--slurp")
+    row["check_runs"] = [
+        {
+            "name": c["name"],
+            "status": c["status"],
+            "conclusion": c["conclusion"],
+            "url": c["html_url"],
+        }
+        for page in runs
+        for c in page["check_runs"]
+    ]
+    row["commit_statuses"] = [
+        {"name": c["context"], "state": c["state"], "url": c["target_url"]}
+        for page in statuses
+        for c in page["statuses"]
+    ]
+    return row, notes
+
+
 def _classify_review(node: dict[str, Any], viewer_login: str) -> str | None:
     """Return review, team, or None if this search node is not a review request for viewer."""
     requests = (node.get("reviewRequests") or {}).get("nodes") or []
