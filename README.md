@@ -32,6 +32,41 @@ decky pr list -t       # team requests only
 
 Default filters hide drafts, PRs whose checks are not `pass`, and authors listed in `pr.hide_authors` (default includes `renovate`). Use `--all` or press `a` in the picker to show them.
 
+### JSON interface (version 1)
+
+```bash
+decky pr list --json        # all three buckets, default filters
+decky pr list --json --all  # include hidden PRs
+decky pr list --json --mine # only the mine bucket (--team selects team)
+```
+
+JSON mode overrides interactive settings, including `-i`. Success prints one JSON
+object to stdout; failures exit nonzero with an error on stderr. An empty result
+uses empty arrays. `--mine` and `--team` remain mutually exclusive.
+
+List envelope: `{"version":1,"buckets":{"review":[],"team":[],"mine":[]},"hidden":{"review":0,"team":0,"mine":0},"notes":[]}`.
+Selection flags omit unselected bucket and hidden-count keys. `hidden` counts PRs
+removed by the filters in each selected bucket; `notes` contains warning strings.
+
+Each PR has these fields (snake_case is part of the interface):
+
+| Fields                            | JSON type / meaning                                               |
+| --------------------------------- | ----------------------------------------------------------------- |
+| `repo`, `repo_owner`, `repo_name` | strings: `OWNER/NAME`, owner, name                                |
+| `number`, `approvals`             | integers: PR number, latest approving review count                |
+| `title`, `author`, `url`, `body`  | strings; deleted authors use `""`; body is Markdown               |
+| `draft`                           | boolean                                                           |
+| `checks`                          | `"pass"`, `"fail"`, `"pending"`, or `"none"`                      |
+| `review_decision`                 | `"APPROVED"`, `"CHANGES_REQUESTED"`, `"REVIEW_REQUIRED"`, or null |
+| `updated_at`                      | GitHub timestamp string (UTC ISO 8601)                            |
+| `labels`                          | array of label-name strings                                       |
+
+Consumers should check `version` and tolerate additional fields. Incompatible
+changes increment the version. Lists retain the existing repo/number ordering and
+GitHub limits: 50 PRs per source, 20 latest reviews, 20 review requests, 100 labels,
+and 15 entries per watch setting. `notes` warns when a limit may hide data;
+approval counts may then be partial. Results are snapshots, not a transaction.
+
 ## `decky pr review`
 
 Opens or focuses a tmux window (default) or cmux workspace named `pr-<repo>-<number>`, runs `review.command`, and on the tmux path runs `browser.command` with the PR URL.
@@ -75,25 +110,28 @@ mcp add --transport http decky http://127.0.0.1:8777/mcp
 
 Default file: `~/.config/decky/config.toml` (mode `600` on write).
 
-| Key | Env | Purpose |
-| --- | --- | --- |
-| `work_org` | `DECKY_WORK_ORG` | Owner for bare repo names |
-| `interactive` | `DECKY_INTERACTIVE` | Default `-i` when stdin/stdout are a TTY |
-| `pr.dir` | `DECKY_PR_DIR` | Parent directory for checkouts |
-| `pr.hide_authors` | `DECKY_PR_HIDE_AUTHORS` | Hidden logins unless `--all` |
-| `review.command` | `DECKY_REVIEW_COMMAND` | Review pane command template |
-| `queue.command` | `DECKY_QUEUE_COMMAND` | Optional argv printing `{today, mine, direct, team}` JSON for the web UI |
-| `jira.browse_url` | `DECKY_JIRA_BROWSE_URL` | Optional `{key}` URL template for queue Jira links |
-| `terminal` | `DECKY_TERMINAL` | `tmux` (default) or `cmux` |
-| `tmux.bin` | `DECKY_TMUX_BIN` | tmux binary |
-| `tmux.session` | `DECKY_TMUX_SESSION` | Session for PR windows |
-| `browser.command` | `DECKY_BROWSER_COMMAND` | Opens PR URL on tmux path |
-| `cmux.bin` | `DECKY_CMUX_BIN` | cmux binary |
-| `cmux.group` | `DECKY_CMUX_GROUP` | Workspace group (cmux path) |
-| `server.host` | `DECKY_SERVER_HOST` | Bind address (default `127.0.0.1`) |
-| `server.port` | `DECKY_SERVER_PORT` | Listen port (default `8777`) |
-| `server.log_level` | `DECKY_SERVER_LOG_LEVEL` | App log level (`debug` … `error`) |
-| `status.command` | `DECKY_STATUS_COMMAND` | Optional argv printing waiting/running JSON |
+| Key                | Env                      | Purpose                                                                  |
+| ------------------ | ------------------------ | ------------------------------------------------------------------------ |
+| `work_org`         | `DECKY_WORK_ORG`         | Owner for bare repo names                                                |
+| `interactive`      | `DECKY_INTERACTIVE`      | Default `-i` when stdin/stdout are a TTY                                 |
+| `pr.dir`           | `DECKY_PR_DIR`           | Parent directory for checkouts                                           |
+| `pr.hide_authors`  | `DECKY_PR_HIDE_AUTHORS`  | Hidden logins unless `--all`                                             |
+| `pr.watch_teams`   | `DECKY_PR_WATCH_TEAMS`   | Extra team review sources (`org/team`)                                   |
+| `pr.watch_repos`   | `DECKY_PR_WATCH_REPOS`   | Extra review candidates from `owner/repo`                                |
+| `pr.watch_owners`  | `DECKY_PR_WATCH_OWNERS`  | Extra review candidates across users or organizations                    |
+| `review.command`   | `DECKY_REVIEW_COMMAND`   | Review pane command template                                             |
+| `queue.command`    | `DECKY_QUEUE_COMMAND`    | Optional argv printing `{today, mine, direct, team}` JSON for the web UI |
+| `jira.browse_url`  | `DECKY_JIRA_BROWSE_URL`  | Optional `{key}` URL template for queue Jira links                       |
+| `terminal`         | `DECKY_TERMINAL`         | `tmux` (default) or `cmux`                                               |
+| `tmux.bin`         | `DECKY_TMUX_BIN`         | tmux binary                                                              |
+| `tmux.session`     | `DECKY_TMUX_SESSION`     | Session for PR windows                                                   |
+| `browser.command`  | `DECKY_BROWSER_COMMAND`  | Opens PR URL on tmux path                                                |
+| `cmux.bin`         | `DECKY_CMUX_BIN`         | cmux binary                                                              |
+| `cmux.group`       | `DECKY_CMUX_GROUP`       | Workspace group (cmux path)                                              |
+| `server.host`      | `DECKY_SERVER_HOST`      | Bind address (default `127.0.0.1`)                                       |
+| `server.port`      | `DECKY_SERVER_PORT`      | Listen port (default `8777`)                                             |
+| `server.log_level` | `DECKY_SERVER_LOG_LEVEL` | App log level (`debug` … `error`)                                        |
+| `status.command`   | `DECKY_STATUS_COMMAND`   | Optional argv printing waiting/running JSON                              |
 
 Example (also written by `decky config init`):
 
@@ -103,6 +141,7 @@ terminal = "tmux"
 
 [pr]
 dir = "~/prs"
+watch_owners = ["example-org", "example-user"]
 
 [review]
 command = "your-review-agent {url}"
@@ -112,6 +151,11 @@ command = "open -a Dia {url}"
 ```
 
 Placeholders for `review.command` and `browser.command`: `{slug}` `{owner}` `{repo}` `{number}` `{url}` `{cwd}`.
+
+Watched owners and repositories contribute open, non-archived PRs by other authors
+that you have not reviewed. Duplicates appear once; your own PRs stay in `mine`.
+Team sources contribute to `team` unless you are directly requested. All sources
+share the usual filters. List settings accept TOML arrays or comma-separated env values.
 
 ## License
 

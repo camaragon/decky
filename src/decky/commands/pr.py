@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import click
@@ -46,7 +47,9 @@ def open_pr_action(template_key: str, name_prefix: str, slug: str, number: int) 
     dest_root.mkdir(parents=True, exist_ok=True)
     dest = dest_root / short
     github.clone_or_reuse(slug, dest)
-    command = review_tpl.interpolate(command_template, slug=slug, number=number, dest=dest)
+    command = review_tpl.interpolate(
+        command_template, slug=slug, number=number, dest=dest
+    )
     backend.open(name, dest, command, url)
 
 
@@ -93,7 +96,7 @@ def pr_header(drafts: bool) -> tuple[str, ...]:
 
 
 def pr_cells(p: dict, drafts: bool) -> tuple[str, ...]:
-    draft = (("yes" if p["draft"] else "no",) if drafts else ())
+    draft = ("yes" if p["draft"] else "no",) if drafts else ()
     return (
         f"#{p['number']}",
         p["repo"],
@@ -113,7 +116,9 @@ def pr_rows(prs: list[dict], header: bool = False, drafts: bool = False) -> list
         return []
     widths = [max(len(row[i]) for row in cells) for i in range(len(cells[0]) - 1)]
     return [
-        "  ".join(cell.ljust(width) for cell, width in zip(row, widths)) + "  " + row[-1]
+        "  ".join(cell.ljust(width) for cell, width in zip(row, widths))
+        + "  "
+        + row[-1]
         for row in cells
     ]
 
@@ -141,22 +146,46 @@ def review(repo: str, number: int, org: str | None) -> None:
 @config.interactive_option(
     "Select a PR; Enter review, o opens the URL, tab cycles lists, a toggles --all."
 )
-@click.option("-a", "--all", "show_all", is_flag=True, help="Show drafts, failing checks, and hidden authors.")
+@click.option(
+    "-a",
+    "--all",
+    "show_all",
+    is_flag=True,
+    help="Show drafts, failing checks, and hidden authors.",
+)
 @click.option("-m", "--mine", is_flag=True, help="List PRs you opened.")
 @click.option("-t", "--team", is_flag=True, help="List team review requests.")
+@click.option(
+    "--json", "as_json", is_flag=True, help="Emit versioned JSON; disables the picker."
+)
 def list_prs(
     interactive: bool | None,
     show_all: bool,
     mine: bool,
     team: bool,
+    as_json: bool,
 ) -> None:
     """List open pull requests (alias ls)."""
     if mine and team:
         raise click.UsageError("cannot use --mine and --team together")
     kind = "mine" if mine else "team" if team else "review"
-    use_interactive = config.interactive(interactive)
+    use_interactive = False if as_json else config.interactive(interactive)
 
     lists, truncation_notes = fetch_lists()
+    if as_json:
+        selected = (kind,) if mine or team else KINDS
+        filtered = {key: filter_prs(lists[key], show_all) for key in selected}
+        click.echo(
+            json.dumps(
+                {
+                    "version": 1,
+                    "buckets": {key: rows for key, (rows, _) in filtered.items()},
+                    "hidden": {key: count for key, (_, count) in filtered.items()},
+                    "notes": truncation_notes,
+                }
+            )
+        )
+        return
     if not use_interactive:
         prs, hidden = filter_prs(lists[kind], show_all)
         for note in truncation_notes:
@@ -175,11 +204,9 @@ def list_prs(
     while True:
         prs, hidden = filter_prs(fetched[kind], show_all)
         title = TITLES[kind]
-        hint_parts = []
+        hint_parts = list(truncation_notes)
         if hidden:
             title += f" ({hidden} hidden)"
-        for note in truncation_notes:
-            hint_parts.append(note)
         following = KINDS[(KINDS.index(kind) + 1) % len(KINDS)]
         keys = f"tab {TITLES[following]}, a {'filter' if show_all else 'show all'}"
         if prs:

@@ -36,12 +36,16 @@ PR_FIELDS = """
 fragment PrFields on PullRequest {
   number
   title
+  url
+  body
+  reviewDecision
   isDraft
   updatedAt
   author { login }
   repository { nameWithOwner }
   commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
-  latestOpinionatedReviews(first: 20) { nodes { state } }
+  latestOpinionatedReviews(first: 20) { pageInfo { hasNextPage } nodes { state } }
+  labels(first: 100) { pageInfo { hasNextPage } nodes { name } }
   reviewRequests(first: 20) {
     pageInfo { hasNextPage }
     nodes { requestedReviewer { ... on User { login } ... on Team { slug } } }
@@ -68,19 +72,27 @@ def _escape_query(q: str) -> str:
     return q.replace("\\", "\\\\").replace('"', '\\"')
 
 
-def build_graphql(watch_teams: list[str], watch_repos: list[str]) -> str:
+def build_graphql(
+    watch_teams: list[str],
+    watch_repos: list[str],
+    watch_owners: list[str] | None = None,
+) -> str:
     extra = ""
     for i, team in enumerate(watch_teams[:MAX_WATCH]):
         q = _escape_query(f"is:pr is:open archived:false team-review-requested:{team}")
         extra += f"""
   watchTeam{i}: search(query: "{q}", type: ISSUE, first: 50) {{{SEARCH_NODES}
   }}"""
-    for i, repo in enumerate(watch_repos[:MAX_WATCH]):
-        q = _escape_query(
-            f"repo:{repo} is:pr is:open archived:false -author:@me -reviewed-by:@me"
-        )
-        extra += f"""
-  watchRepo{i}: search(query: "{q}", type: ISSUE, first: 50) {{{SEARCH_NODES}
+    for source, qualifier, values in (
+        ("Repo", "repo", watch_repos),
+        ("Owner", "user", watch_owners or []),
+    ):
+        for i, value in enumerate(values[:MAX_WATCH]):
+            q = _escape_query(
+                f"{qualifier}:{value} is:pr is:open archived:false -author:@me -reviewed-by:@me"
+            )
+            extra += f"""
+  watch{source}{i}: search(query: "{q}", type: ISSUE, first: 50) {{{SEARCH_NODES}
   }}"""
     return f"""
 {PR_FIELDS}
@@ -131,9 +143,19 @@ def pr_from_node(node: dict[str, Any]) -> dict[str, Any]:
     rollup = commits[0]["commit"]["statusCheckRollup"] if commits else None
     state = rollup.get("state") if rollup else None
     reviews = (node.get("latestOpinionatedReviews") or {}).get("nodes") or []
+    slug = node["repository"]["nameWithOwner"]
+    owner, name = slug.split("/", 1)
     return {
         "number": node["number"],
-        "repo": node["repository"]["nameWithOwner"],
+        "repo": slug,
+        "repo_owner": owner,
+        "repo_name": name,
+        "url": node.get("url") or f"https://github.com/{slug}/pull/{node['number']}",
+        "body": node.get("body") or "",
+        "review_decision": node.get("reviewDecision"),
+        "labels": [
+            label["name"] for label in (node.get("labels") or {}).get("nodes", [])
+        ],
         "title": node["title"],
         "checks": CHECK_STATES.get(state, "none"),
         "approvals": sum(1 for r in reviews if r and r.get("state") == "APPROVED"),
@@ -141,9 +163,28 @@ def pr_from_node(node: dict[str, Any]) -> dict[str, Any]:
         "author": (node.get("author") or {}).get("login") or "",
         "updated_at": node.get("updatedAt") or "",
         "review_requests_truncated": bool(
-            ((node.get("reviewRequests") or {}).get("pageInfo") or {}).get("hasNextPage")
+            ((node.get("reviewRequests") or {}).get("pageInfo") or {}).get(
+                "hasNextPage"
+            )
+            or ((node.get("labels") or {}).get("pageInfo") or {}).get("hasNextPage")
+            or ((node.get("latestOpinionatedReviews") or {}).get("pageInfo") or {}).get(
+                "hasNextPage"
+            )
         ),
     }
+
+
+def _gh_json(*args: str) -> Any:
+    result = run_gh(*args)
+    if result.returncode:
+        raise click.ClickException(f"gh request failed: {result.stderr.strip()}")
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        raise click.ClickException("gh returned unreadable JSON") from None
+    if isinstance(payload, dict) and payload.get("errors"):
+        raise click.ClickException(f"GitHub errors: {payload['errors']}")
+    return payload
 
 
 def _classify_review(node: dict[str, Any], viewer_login: str) -> str | None:
@@ -180,18 +221,22 @@ def load_pr_lists() -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
     """Load review, team, and mine lists; return notes for truncation."""
     watch_teams = _list_setting("pr.watch_teams")
     watch_repos = _list_setting("pr.watch_repos")
-    query = build_graphql(watch_teams, watch_repos)
-    result = run_gh("api", "graphql", "-f", f"query={query}")
-    if result.returncode != 0:
-        raise click.ClickException(f"gh api graphql failed: {result.stderr.strip()}")
+    watch_owners = _list_setting("pr.watch_owners")
+    query = build_graphql(watch_teams, watch_repos, watch_owners)
     try:
-        data = json.loads(result.stdout)["data"]
-    except (json.JSONDecodeError, KeyError, TypeError):
-        raise click.ClickException("gh returned unreadable pull request lists") from None
+        data = _gh_json("api", "graphql", "-f", f"query={query}")["data"]
+    except (KeyError, TypeError):
+        raise click.ClickException(
+            "gh returned unreadable pull request lists"
+        ) from None
 
     viewer = data["viewer"]
     login = viewer["login"]
     notes: list[str] = []
+    if any(
+        len(values) > MAX_WATCH for values in (watch_teams, watch_repos, watch_owners)
+    ):
+        notes.append(f"watch sources limited to {MAX_WATCH} entries per setting")
 
     mine_page = (viewer.get("pullRequests") or {}).get("pageInfo") or {}
     _note_truncation(notes, mine_page)
@@ -200,8 +245,9 @@ def load_pr_lists() -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
 
     mine_nodes = (viewer.get("pullRequests") or {}).get("nodes") or []
     mine = [pr_from_node(n) for n in mine_nodes if n]
-    if any(p.pop("review_requests_truncated", False) for p in mine):
-        _note_truncation(notes, {"hasNextPage": True})
+    for row in mine:
+        if row.pop("review_requests_truncated", False):
+            _note_truncation(notes, {"hasNextPage": True})
 
     review: list[dict[str, Any]] = []
     team: list[dict[str, Any]] = []
@@ -251,8 +297,11 @@ def load_pr_lists() -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
             else:
                 add_row(row, "team")
 
-    for i, _repo in enumerate(watch_repos[:MAX_WATCH]):
-        block = data.get(f"watchRepo{i}") or {}
+    for key in (
+        *(f"watchRepo{i}" for i in range(min(len(watch_repos), MAX_WATCH))),
+        *(f"watchOwner{i}" for i in range(min(len(watch_owners), MAX_WATCH))),
+    ):
+        block = data.get(key) or {}
         _note_truncation(notes, block.get("pageInfo"))
         for node in block.get("nodes") or []:
             if not node:
@@ -274,8 +323,14 @@ def load_pr_lists() -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
 
 
 def clone(slug: str, dest: Path) -> int:
-    cmd = ["git", "clone", "--recurse-submodules", f"git@github.com:{slug}.git", str(dest)]
-    return subprocess.run(cmd).returncode
+    cmd = [
+        "git",
+        "clone",
+        "--recurse-submodules",
+        f"git@github.com:{slug}.git",
+        str(dest),
+    ]
+    return subprocess.run(cmd, check=False).returncode
 
 
 def remote_matches(dest: Path, slug: str) -> bool:
@@ -289,7 +344,7 @@ def remote_matches(dest: Path, slug: str) -> bool:
         return False
     url = result.stdout.strip().lower().removesuffix(".git")
     slug = slug.lower()
-    return url.endswith(f":{slug}") or url.endswith(f"/{slug}")
+    return url.endswith((f":{slug}", f"/{slug}"))
 
 
 def clone_or_reuse(slug: str, dest: Path) -> None:
