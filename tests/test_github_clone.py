@@ -51,7 +51,8 @@ def test_checkout_origin_identity(
 
     def run(cmd, **kwargs):
         calls.append(cmd)
-        return subprocess.CompletedProcess(cmd, 0, stdout=origin + "\n")
+        out = "Org/Repo" if cmd[0] == "gh" else origin
+        return subprocess.CompletedProcess(cmd, 0, stdout=out + "\n")
 
     monkeypatch.setattr(subprocess, "run", run)
     if matches:
@@ -59,8 +60,77 @@ def test_checkout_origin_identity(
     else:
         with pytest.raises(click.ClickException, match="exists and is not"):
             github.clone_or_reuse("org/repo", dest)
-    assert calls == [["git", "-C", str(dest), "remote", "get-url", "origin"]]
+    assert calls[0] == ["git", "-C", str(dest), "remote", "get-url", "origin"]
+    assert all(cmd[:3] == ["gh", "repo", "view"] for cmd in calls[1:])
     assert marker.read_text() == "unchanged"
+
+
+@pytest.mark.parametrize(
+    "origin, canonical, matches",
+    [
+        ("https://github.com/new-owner/repo.git", "New-Owner/repo", True),
+        ("git@github.com:new-owner/renamed.git", "new-owner/renamed", True),
+        ("https://github.com/new-owner/repo.git", "other/repo", False),
+        ("git@other.example:new-owner/repo.git", "new-owner/repo", False),
+        ("https://github.com/prefix/new-owner/repo", "new-owner/repo", False),
+    ],
+)
+def test_redirected_repository_checkout_is_reused(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    origin: str,
+    canonical: str,
+    matches: bool,
+) -> None:
+    dest = tmp_path / "old-owner+repo"
+    dest.mkdir()
+    calls = []
+
+    def run(cmd, **kwargs):
+        calls.append(cmd)
+        out = canonical if cmd[0] == "gh" else origin
+        return subprocess.CompletedProcess(cmd, 0, stdout=out + "\n")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    if matches:
+        github.clone_or_reuse("old-owner/repo", dest)
+    else:
+        with pytest.raises(click.ClickException, match="exists and is not"):
+            github.clone_or_reuse("old-owner/repo", dest)
+    assert not any(cmd[:3] == ["gh", "repo", "clone"] for cmd in calls)
+    assert [cmd for cmd in calls if cmd[0] == "gh"] in (
+        [],
+        [
+            [
+                "gh",
+                "repo",
+                "view",
+                "github.com/old-owner/repo",
+                "--json",
+                "nameWithOwner",
+                "-q",
+                ".nameWithOwner",
+            ]
+        ],
+    )
+
+
+def test_redirect_lookup_failure_refuses_checkout(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    dest = tmp_path / "old-owner+repo"
+    dest.mkdir()
+
+    def run(cmd, **kwargs):
+        if cmd[0] == "gh":
+            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="not found")
+        return subprocess.CompletedProcess(
+            cmd, 0, stdout="https://github.com/new-owner/repo.git\n"
+        )
+
+    monkeypatch.setattr(subprocess, "run", run)
+    with pytest.raises(click.ClickException, match="exists and is not"):
+        github.clone_or_reuse("old-owner/repo", dest)
 
 
 def test_first_checkout_uses_configured_protocol(

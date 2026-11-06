@@ -301,7 +301,7 @@ def clone(slug: str, dest: Path) -> None:
         )
 
 
-def remote_matches(dest: Path, slug: str) -> bool:
+def origin_slug(dest: Path) -> str | None:
     result = subprocess.run(
         ["git", "-C", str(dest), "remote", "get-url", "origin"],
         capture_output=True,
@@ -309,27 +309,43 @@ def remote_matches(dest: Path, slug: str) -> bool:
         check=False,
     )
     if result.returncode != 0:
-        return False
+        return None
     url = result.stdout.strip()
     if "://" in url:
         try:
             parsed = urlsplit(url)
             if parsed.scheme not in {"https", "ssh"} or parsed.query or parsed.fragment:
-                return False
+                return None
             host = parsed.hostname
             path = parsed.path.removeprefix("/")
         except ValueError:
-            return False
+            return None
     else:
         match = re.fullmatch(r"(?:[^@/\s]+@)?([^:/\s]+):([^?#\s]+)", url)
         if not match:
-            return False
+            return None
         host, path = match.groups()
-    return (
-        host is not None
-        and host.lower() == "github.com"
-        and path.lower().removesuffix(".git") == slug.lower()
+    if host is None or host.lower() != "github.com":
+        return None
+    return path.lower().removesuffix(".git")
+
+
+def remote_matches(dest: Path, slug: str) -> bool:
+    origin = origin_slug(dest)
+    if origin is None:
+        return False
+    if origin == slug.lower():
+        return True
+    result = run_gh(
+        "repo",
+        "view",
+        f"github.com/{slug}",
+        "--json",
+        "nameWithOwner",
+        "-q",
+        ".nameWithOwner",
     )
+    return result.returncode == 0 and result.stdout.strip().lower() == origin
 
 
 def clone_or_reuse(slug: str, dest: Path) -> None:

@@ -41,7 +41,7 @@ decky pr review owner/repo 123
 decky pr r my-repo 5    # requires work_org when REPO has no slash
 ```
 
-Checkout directory: `pr.dir/<owner>+<repo>` (reused only when origin matches the GitHub host and exact owner/repository; no `gh pr checkout`). The origin is checked before focusing an existing review surface. Legacy `<repo-short>` directories and `pr-<repo>-<number>` surfaces are left untouched; new reviews use the owner-qualified identity.
+Checkout directory: `pr.dir/<owner>+<repo>` (reused only when origin matches the GitHub host and exact owner/repository, or the repository GitHub redirects that owner/repository to after a rename or transfer; no `gh pr checkout`). The origin is checked before focusing an existing review surface. Legacy `<repo-short>` directories and `pr-<repo>-<number>` surfaces are left untouched; new reviews use the owner-qualified identity.
 
 `terminal = "tmux"` is the default. Windows live in session `decky`, or the current tmux session when `$TMUX` is set. Set `terminal = "cmux"` to use cmux instead (`browser.command` is ignored on that path).
 
