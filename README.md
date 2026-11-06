@@ -51,6 +51,8 @@ Override the config path with `DECKY_CONFIG`.
 
 Local web UI at `http://127.0.0.1:8777` (FastAPI + React). Review buttons use `review.command`. Optional `queue.command` prints `{today, mine, direct, team}` JSON for the PR queue sections; optional `jira.browse_url` links ticket keys.
 
+The server has no authentication. Keep the default loopback bind unless you trust everyone who can reach the listener. Non-loopback binds, including `0.0.0.0` and `::`, emit a warning. API Host filtering allows loopback names and the configured listen host; it is not authentication.
+
 ```bash
 pnpm -C web install && pnpm -C web build   # dev; git/wheel installs build the SPA automatically
 decky server
@@ -64,6 +66,8 @@ Connect an MCP client:
 ```bash
 mcp add --transport http decky http://127.0.0.1:8777/mcp
 ```
+
+HTTP and MCP configuration writes share a lock within one server instance. Separate server processes, CLI commands and external editors do not share that lock.
 
 ## Config
 

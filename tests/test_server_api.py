@@ -15,7 +15,9 @@ from decky.server.app import create_app
 def client(tmp_path: Path) -> TestClient:
     empty_static = tmp_path / "static"
     empty_static.mkdir()
-    return TestClient(create_app(host="127.0.0.1", static=empty_static), base_url="http://127.0.0.1")
+    return TestClient(
+        create_app(host="127.0.0.1", static=empty_static), base_url="http://127.0.0.1"
+    )
 
 
 def test_meta(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -73,7 +75,9 @@ def test_queue_disabled(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> 
     assert client.get("/api/queue").json() == {"disabled": True}
 
 
-def test_review_failure_422(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_review_failure_422(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
     import click
 
     def fail(*a):
@@ -87,7 +91,9 @@ def test_review_failure_422(client: TestClient, monkeypatch: pytest.MonkeyPatch)
 
 def test_open_url(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     opened: list[str] = []
-    monkeypatch.setattr("decky.server.api.open_http_url", lambda url: opened.append(url))
+    monkeypatch.setattr(
+        "decky.server.api.open_http_url", lambda url: opened.append(url)
+    )
     res = client.post("/api/open-url", json={"url": "http://127.0.0.1:4387/session/ab"})
     assert res.status_code == 200
     assert opened == ["http://127.0.0.1:4387/session/ab"]
@@ -119,7 +125,9 @@ def test_host_check_421(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> 
     assert res.status_code == 421
 
 
-def test_config_roundtrip(client: TestClient, tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_config_roundtrip(
+    client: TestClient, tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     path = tmp_path / "config.toml"
     monkeypatch.setenv("DECKY_CONFIG", str(path))
     res = client.get("/api/config")
@@ -129,3 +137,75 @@ def test_config_roundtrip(client: TestClient, tmp_path, monkeypatch: pytest.Monk
     assert put.status_code == 200
     delete = client.delete("/api/config/work_org")
     assert delete.status_code == 200
+
+
+@pytest.mark.parametrize(
+    "method,path",
+    [
+        ("GET", "/api/config"),
+        ("GET", "/api/meta"),
+        ("GET", "/api/queue"),
+        ("GET", "/api/status"),
+        ("GET", "/api/tables/review"),
+        ("PUT", "/api/config/work_org"),
+        ("DELETE", "/api/config/work_org"),
+        ("POST", "/api/prs/review"),
+        ("POST", "/api/open-url"),
+        ("GET", "/api/docs"),
+        ("GET", "/api/openapi.json"),
+        ("HEAD", "/api/config"),
+        ("OPTIONS", "/api/config"),
+    ],
+)
+def test_foreign_host_rejected_before_work(client, monkeypatch, method, path) -> None:
+    def unexpected(*args, **kwargs):
+        pytest.fail("untrusted request reached application work")
+
+    monkeypatch.setattr("decky.config.load_file", unexpected)
+    monkeypatch.setattr("decky.server.api.load_queue", unexpected)
+    monkeypatch.setattr("decky.server.api.load_status", unexpected)
+    monkeypatch.setattr("decky.server.views.github.load_pr_lists", unexpected)
+    monkeypatch.setattr(pr_cmd, "open_review", unexpected)
+    monkeypatch.setattr("decky.server.api.open_http_url", unexpected)
+    response = client.request(
+        method,
+        path,
+        headers={"Host": "foreign.example"},
+        json={
+            "value": "example",
+            "repo": "o/r",
+            "number": 1,
+            "url": "https://example.com",
+        },
+    )
+    assert response.status_code == 421
+
+
+@pytest.mark.parametrize(
+    "host", ["127.0.0.1:8777", "LOCALHOST", "[::1]", "[::1]:8777", "[0:0:0:0:0:0:0:1]"]
+)
+def test_loopback_host_config_write(tmp_path, monkeypatch, host) -> None:
+    monkeypatch.setenv("DECKY_CONFIG", str(tmp_path / "config.toml"))
+    client = TestClient(create_app(host="::1"), base_url="http://[::1]:8777")
+    response = client.put(
+        "/api/config/work_org", headers={"Host": host}, json={"value": "example"}
+    )
+    assert response.status_code == 200
+    assert pr_cmd.config.load_file()["work_org"] == "example"
+
+
+@pytest.mark.parametrize(
+    "host",
+    [
+        "[::1",
+        "[::1]extra",
+        "localhost:bad",
+        "localhost:",
+        "foreign.example",
+        "foreign.example@localhost",
+        "localhost/path",
+        "::1",
+    ],
+)
+def test_invalid_host_rejected(client, host) -> None:
+    assert client.get("/api/config", headers={"Host": host}).status_code == 421

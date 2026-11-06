@@ -14,7 +14,7 @@ from starlette.routing import BaseRoute
 from decky import config, github
 from decky.commands import pr as pr_cmd
 from decky.server import api
-from decky.server.views import SettingError, save_setting
+from decky.server.views import SettingError
 
 log = logging.getLogger(__name__)
 
@@ -75,16 +75,16 @@ def get_config(key: str) -> Any:
     return {"key": key, "value": value, "source": source}
 
 
-def set_config(key: str, value: str) -> str:
+def set_config(state: api.State, key: str, value: str) -> str:
     try:
-        return save_setting(key, value, unset=False)
+        return state.save_setting(key, value)
     except SettingError as e:
         raise ToolError(str(e)) from e
 
 
-def unset_config(key: str) -> str:
+def unset_config(state: api.State, key: str) -> str:
     try:
-        return save_setting(key, "", unset=True)
+        return state.save_setting(key, "", unset=True)
     except SettingError as e:
         raise ToolError(str(e)) from e
 
@@ -111,11 +111,11 @@ def build(state: api.State | None = None) -> MCPServer:
 
     @server.tool(annotations=WRITE)
     def set_config_tool(key: str, value: str) -> str:
-        return set_config(key, value)
+        return set_config(decky_state, key, value)
 
     @server.tool(annotations=DELETE)
     def unset_config_tool(key: str) -> str:
-        return unset_config(key)
+        return unset_config(decky_state, key)
 
     return server
 
