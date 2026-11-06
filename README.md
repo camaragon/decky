@@ -146,7 +146,6 @@ terminal = "tmux"
 
 [pr]
 dir = "~/prs"
-watch_owners = ["example-org", "example-user"]
 
 [review]
 command = "your-review-agent {url}"
