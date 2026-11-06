@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { QueryFeedback } from "../components/QueryFeedback";
 
-import { deleteConfig, putConfig } from "../lib/api";
+import { type ConfigSetting, deleteConfig, putConfig } from "../lib/api";
 import { useConfig } from "../hooks/useConfig";
 
 export function ConfigPage() {
@@ -36,13 +36,7 @@ export function ConfigPage() {
   );
 }
 
-function ConfigRow({
-  setting,
-  onSaved,
-}: {
-  setting: { key: string; value: string | null; source: string; help: string };
-  onSaved: () => Promise<void>;
-}) {
+function ConfigRow({ setting, onSaved }: { setting: ConfigSetting; onSaved: () => Promise<void> }) {
   const [value, setValue] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -77,7 +71,10 @@ function ConfigRow({
           aria-label={setting.key}
         />
       </td>
-      <td>{setting.source}</td>
+      <td>
+        {setting.source}
+        {setting.error ? <span role="alert">{setting.error}</span> : null}
+      </td>
       <td>
         <button type="button" disabled={busy} onClick={() => mutate(false)}>
           Save

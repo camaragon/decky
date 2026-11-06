@@ -80,16 +80,24 @@ def allowed_host(request: Request) -> bool:
     return _normalize_host(host_header) in {listen, "localhost", "127.0.0.1", "::1"}
 
 
+def _configured(key: str) -> bool:
+    try:
+        value, _ = config.resolve(key)
+    except click.ClickException:
+        return True
+    return bool(value)
+
+
 @router.get("/meta")
 def meta() -> dict:
-    review, _ = config.resolve("review.command")
-    queue, _ = config.resolve("queue.command")
-    status, _ = config.resolve("status.command")
-    jira, _ = config.resolve("jira.browse_url")
+    try:
+        jira, _ = config.resolve("jira.browse_url")
+    except click.ClickException:
+        jira = None
     return {
-        "reviewConfigured": bool(review),
-        "queueConfigured": bool(queue),
-        "statusConfigured": bool(status),
+        "reviewConfigured": _configured("review.command"),
+        "queueConfigured": _configured("queue.command"),
+        "statusConfigured": _configured("status.command"),
         "jiraBrowseUrl": jira if isinstance(jira, str) and jira.strip() else None,
     }
 

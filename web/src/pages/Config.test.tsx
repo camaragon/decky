@@ -86,3 +86,40 @@ it("recovers from an initial config failure", async () => {
   await userEvent.click(screen.getByText("Retry config"));
   expect(await screen.findByRole("heading", { name: "Config" })).toBeInTheDocument();
 });
+
+it("shows an invalid key's error and still unsets it", async () => {
+  const row: ConfigSetting = {
+    key: "interactive",
+    value: "perhaps",
+    source: "file",
+    help: "interactive",
+    kind: "bool",
+    error: "interactive (file) must be true or false",
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === "DELETE") {
+        Object.assign(row, { value: "false", source: "default", error: null });
+        return Response.json({ message: "removed interactive" });
+      }
+      return Response.json({
+        path: "/tmp/config.toml",
+        settings: [{ ...row }],
+      });
+    }),
+  );
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <ConfigPage />
+    </QueryClientProvider>,
+  );
+  const input = await screen.findByRole("textbox", { name: "interactive" });
+  expect(input).toHaveValue("perhaps");
+  expect(screen.getByRole("alert")).toHaveTextContent("interactive (file) must be true or false");
+  await userEvent.click(screen.getByText("Unset"));
+  await waitFor(() => expect(input).toHaveValue("false"));
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.getByText("removed interactive")).toBeInTheDocument();
+});

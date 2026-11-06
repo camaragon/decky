@@ -28,6 +28,8 @@ def run_command(argv: list[str], setting: str, **kwargs) -> subprocess.Completed
 
 
 def launch(command: str, setting: str) -> None:
-    result = run_command(split_command(command, setting), setting, capture_output=True, check=False)
+    result = run_command(
+        split_command(command, setting), setting, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False
+    )
     if result.returncode != 0:
         raise click.ClickException(f"{setting}: command exited {result.returncode}; check the command")

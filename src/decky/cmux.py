@@ -31,6 +31,10 @@ def find_cmux() -> str:
     raise click.ClickException("cmux not found")
 
 
+def open_cmux_app() -> None:
+    run_command(["open", "-a", "cmux"], "open -a cmux", check=True)
+
+
 def cmux_ready(cmux: str) -> bool:
     return (
         run_command([cmux, "ping"], "cmux.bin", stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
@@ -41,7 +45,7 @@ def cmux_ready(cmux: str) -> bool:
 def ensure_cmux_running(cmux: str) -> None:
     if cmux_ready(cmux):
         return
-    run_command(["open", "-a", "cmux"], "cmux.bin", check=True)
+    open_cmux_app()
     for _ in range(10):
         if cmux_ready(cmux):
             return
@@ -96,7 +100,7 @@ def show_workspace(cmux: str, window: str, workspace: str) -> None:
         if result.returncode != 0:
             raise click.ClickException(f"could not switch to cmux workspace {workspace}")
     if not os.environ.get("CMUX_WORKSPACE_ID"):
-        run_command(["open", "-a", "cmux"], "cmux.bin", check=True)
+        open_cmux_app()
 
 
 def find_group(cmux: str, name: str) -> str | None:

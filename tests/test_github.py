@@ -107,7 +107,7 @@ def test_truncation_note(monkeypatch: pytest.MonkeyPatch) -> None:
         lambda *a: subprocess.CompletedProcess([], 0, stdout=json.dumps(payload)),
     )
     _, notes = github.load_pr_lists()
-    assert "list truncated at GitHub page size" in notes
+    assert notes == ["your pull requests truncated at GitHub page size"]
 
 
 def test_watch_repo_search_merged(monkeypatch: pytest.MonkeyPatch) -> None:

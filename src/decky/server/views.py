@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+from typing import Any
 
 import click
 
@@ -28,28 +30,44 @@ def fetch_table(kind: str) -> dict:
     return {"rows": rows, "notes": notes}
 
 
+def _text(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, (list, dict)):
+        return json.dumps(value, default=str)
+    if isinstance(value, bool):
+        return str(value).lower()
+    return str(value)
+
+
+def _raw_value(s: config.Setting) -> tuple[Any, str]:
+    if os.environ.get(s.env):
+        return os.environ[s.env], f"env:{s.env}"
+    try:
+        return config.file_value(s.key), "file"
+    except click.ClickException:
+        return None, "file"
+
+
 def config_settings() -> list[dict]:
-    """Return editable text: JSON lists, lowercase booleans, and scalar strings."""
+    """Return editable text per key; invalid keys carry their raw value and error."""
     out: list[dict] = []
     for key in sorted(config.SETTINGS):
         s = config.SETTINGS[key]
-        value, source = config.resolve(key)
-        shown = value
-        if value is None:
-            shown = None
-        elif isinstance(value, list):
-            shown = json.dumps(value)
-        elif isinstance(value, bool):
-            shown = str(value).lower()
-        else:
-            shown = str(value)
+        error = None
+        try:
+            value, source = config.resolve(key)
+        except click.ClickException as e:
+            value, source = _raw_value(s)
+            error = e.message
         out.append(
             {
                 "key": key,
-                "value": shown,
+                "value": _text(value),
                 "source": source,
                 "help": s.help,
                 "kind": s.kind,
+                "error": error,
             }
         )
     return out

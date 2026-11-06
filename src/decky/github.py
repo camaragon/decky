@@ -169,9 +169,9 @@ def _classify_review(node: dict[str, Any], viewer_login: str) -> str | None:
     return None
 
 
-def _note_truncation(notes: list[str], page_info: dict[str, Any] | None) -> None:
+def _note_truncation(notes: list[str], page_info: dict[str, Any] | None, source: str) -> None:
     if (page_info or {}).get("hasNextPage"):
-        note = "list truncated at GitHub page size"
+        note = f"{source} truncated at GitHub page size"
         if note not in notes:
             notes.append(note)
 
@@ -200,14 +200,14 @@ def load_pr_lists() -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
     notes: list[str] = []
 
     mine_page = (viewer.get("pullRequests") or {}).get("pageInfo") or {}
-    _note_truncation(notes, mine_page)
+    _note_truncation(notes, mine_page, "your pull requests")
     search_page = (data.get("reviewSearch") or {}).get("pageInfo") or {}
-    _note_truncation(notes, search_page)
+    _note_truncation(notes, search_page, "review request search")
 
     mine_nodes = (viewer.get("pullRequests") or {}).get("nodes") or []
     mine = [pr_from_node(n) for n in mine_nodes if n]
     if any(p.pop("review_requests_truncated", False) for p in mine):
-        _note_truncation(notes, {"hasNextPage": True})
+        _note_truncation(notes, {"hasNextPage": True}, "reviewers on your pull requests")
 
     review: list[dict[str, Any]] = []
     team: list[dict[str, Any]] = []
@@ -218,7 +218,7 @@ def load_pr_lists() -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
         key = _row_key(row)
         truncated = row.pop("review_requests_truncated", False)
         if truncated:
-            _note_truncation(notes, {"hasNextPage": True})
+            _note_truncation(notes, {"hasNextPage": True}, "reviewers on review requests")
         if bucket == "review":
             if key in review_keys:
                 return
@@ -244,9 +244,9 @@ def load_pr_lists() -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
         elif kind == "team":
             add_row(row, "team")
 
-    for i, _team in enumerate(watch_teams[:MAX_WATCH]):
+    for i, watched_team in enumerate(watch_teams[:MAX_WATCH]):
         block = data.get(f"watchTeam{i}") or {}
-        _note_truncation(notes, block.get("pageInfo"))
+        _note_truncation(notes, block.get("pageInfo"), f"watched team {watched_team}")
         for node in block.get("nodes") or []:
             if not node:
                 continue
@@ -257,9 +257,9 @@ def load_pr_lists() -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
             else:
                 add_row(row, "team")
 
-    for i, _repo in enumerate(watch_repos[:MAX_WATCH]):
+    for i, watched_repo in enumerate(watch_repos[:MAX_WATCH]):
         block = data.get(f"watchRepo{i}") or {}
-        _note_truncation(notes, block.get("pageInfo"))
+        _note_truncation(notes, block.get("pageInfo"), f"watched repo {watched_repo}")
         for node in block.get("nodes") or []:
             if not node:
                 continue
