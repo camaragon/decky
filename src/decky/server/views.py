@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import click
 
 from decky import config, github
@@ -27,6 +29,7 @@ def fetch_table(kind: str) -> dict:
 
 
 def config_settings() -> list[dict]:
+    """Return editable text: JSON lists, lowercase booleans, and scalar strings."""
     out: list[dict] = []
     for key in sorted(config.SETTINGS):
         s = config.SETTINGS[key]
@@ -35,7 +38,11 @@ def config_settings() -> list[dict]:
         if value is None:
             shown = None
         elif isinstance(value, list):
-            shown = ",".join(str(v) for v in value)
+            shown = json.dumps(value)
+        elif isinstance(value, bool):
+            shown = str(value).lower()
+        else:
+            shown = str(value)
         out.append(
             {
                 "key": key,

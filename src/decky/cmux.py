@@ -14,6 +14,7 @@ from shutil import which
 import click
 
 from decky import config
+from decky.process import run_command
 
 CMUX_APP_BIN = "/Applications/cmux.app/Contents/Resources/bin/cmux"
 
@@ -32,7 +33,7 @@ def find_cmux() -> str:
 
 def cmux_ready(cmux: str) -> bool:
     return (
-        subprocess.run([cmux, "ping"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
+        run_command([cmux, "ping"], "cmux.bin", stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
         == 0
     )
 
@@ -40,7 +41,7 @@ def cmux_ready(cmux: str) -> bool:
 def ensure_cmux_running(cmux: str) -> None:
     if cmux_ready(cmux):
         return
-    subprocess.run(["open", "-a", "cmux"], check=True)
+    run_command(["open", "-a", "cmux"], "cmux.bin", check=True)
     for _ in range(10):
         if cmux_ready(cmux):
             return
@@ -50,7 +51,7 @@ def ensure_cmux_running(cmux: str) -> None:
 
 
 def list_windows(cmux: str) -> list[dict]:
-    result = subprocess.run([cmux, "list-windows", "--json"], capture_output=True, text=True)
+    result = run_command([cmux, "list-windows", "--json"], "cmux.bin", capture_output=True, text=True)
     if result.returncode != 0:
         raise click.ClickException("could not list cmux windows")
     try:
@@ -63,12 +64,14 @@ def list_windows(cmux: str) -> list[dict]:
 
 
 def list_workspaces(cmux: str, window: str) -> list[dict]:
-    result = subprocess.run(
-        [cmux, "workspace", "list", "--window", window, "--json"],
+    result = run_command(
+        [cmux, "workspace", "list", "--window", window, "--json"], "cmux.bin",
         capture_output=True,
         text=True,
         env={**os.environ, "CMUX_QUIET": "1"},
     )
+    if result.returncode != 0:
+        raise click.ClickException(f"cmux.bin: command exited {result.returncode}; could not list workspaces")
     try:
         workspaces = json.loads(result.stdout)["workspaces"]
     except (json.JSONDecodeError, KeyError, TypeError):
@@ -89,16 +92,16 @@ def show_workspace(cmux: str, window: str, workspace: str) -> None:
         ["focus-window", "--window", window],
         ["workspace", "select", "--workspace", workspace, "--window", window],
     ):
-        result = subprocess.run([cmux, *args], capture_output=True, text=True)
+        result = run_command([cmux, *args], "cmux.bin", capture_output=True, text=True)
         if result.returncode != 0:
             raise click.ClickException(f"could not switch to cmux workspace {workspace}")
     if not os.environ.get("CMUX_WORKSPACE_ID"):
-        subprocess.run(["open", "-a", "cmux"], check=False)
+        run_command(["open", "-a", "cmux"], "cmux.bin", check=True)
 
 
 def find_group(cmux: str, name: str) -> str | None:
-    result = subprocess.run(
-        [cmux, "workspace-group", "list", "--json"], capture_output=True, text=True
+    result = run_command(
+        [cmux, "workspace-group", "list", "--json"], "cmux.bin", capture_output=True, text=True
     )
     if result.returncode != 0:
         raise click.ClickException("could not list cmux workspace groups")
@@ -117,7 +120,7 @@ def find_group(cmux: str, name: str) -> str | None:
 
 
 def create_group(cmux: str, name: str, workspace_ref: str) -> None:
-    result = subprocess.run(
+    result = run_command(
         [
             cmux,
             "workspace-group",
@@ -129,6 +132,7 @@ def create_group(cmux: str, name: str, workspace_ref: str) -> None:
             "--idempotency-key",
             name,
         ],
+        "cmux.bin",
         capture_output=True,
         text=True,
     )
@@ -193,13 +197,13 @@ class CmuxBackend:
         group_ref = find_group(cmux, group_name)
         if group_ref:
             args += ["--group", group_ref]
-        created = subprocess.run(
-            [cmux, "workspace", "create", *args], capture_output=True, text=True
+        created = run_command(
+            [cmux, "workspace", "create", *args], "cmux.bin", capture_output=True, text=True
         )
+        if created.returncode != 0:
+            raise click.ClickException(f"cmux.bin: command exited {created.returncode}")
         sys.stdout.write(created.stdout)
         sys.stderr.write(created.stderr)
-        if created.returncode != 0:
-            raise click.exceptions.Exit(created.returncode)
         if group_ref:
             return
         ref = workspace_ref(created.stdout)
