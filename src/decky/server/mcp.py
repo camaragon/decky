@@ -35,7 +35,10 @@ PrKind = Literal["review", "team", "mine"]
 def list_prs(kind: PrKind, show_all: bool = False) -> dict[str, Any]:
     if kind not in pr_cmd.KINDS:
         raise ToolError(f"kind must be one of {', '.join(pr_cmd.KINDS)}")
-    lists, notes = github.load_pr_lists()
+    try:
+        lists, notes = github.load_pr_lists()
+    except click.ClickException as e:
+        raise ToolError(str(e)) from e
     prs = lists[kind]
     if show_all:
         rows = prs
@@ -69,9 +72,9 @@ def list_config() -> list[dict[str, Any]]:
 def get_config(key: str) -> Any:
     try:
         config.setting(key)
-    except click.BadParameter as e:
+        value, source = config.resolve(key)
+    except click.ClickException as e:
         raise ToolError(str(e)) from e
-    value, source = config.resolve(key)
     return {"key": key, "value": value, "source": source}
 
 

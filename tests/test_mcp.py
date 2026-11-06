@@ -177,3 +177,27 @@ def test_failed_config_write_releases_lock(tmp_path, monkeypatch) -> None:
         ).result(timeout=3)
     assert response.status_code == 200
     assert config.load_file() == {"work_org": "old", "pr": {"dir": "~/reviews"}}
+
+
+def test_get_config_invalid_file_value_names_key(tmp_path, monkeypatch) -> None:
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('interactive = "maybe"\n')
+    monkeypatch.setenv("DECKY_CONFIG", str(cfg))
+    monkeypatch.delenv("DECKY_INTERACTIVE", raising=False)
+    server = mcp.build(State())
+    with pytest.raises(ToolError) as err:
+        call(server, "get_config_tool", key="interactive")
+    assert "interactive (file) must be true or false" in str(err.value)
+
+
+def test_list_prs_gh_failure_is_actionable(monkeypatch) -> None:
+    class Failed:
+        returncode = 1
+        stdout = ""
+        stderr = "HTTP 401: Bad credentials"
+
+    monkeypatch.setattr("decky.github.run_gh", lambda *args: Failed())
+    server = mcp.build(State())
+    with pytest.raises(ToolError) as err:
+        call(server, "list_prs_tool", kind="review")
+    assert "gh api graphql failed: HTTP 401: Bad credentials" in str(err.value)
