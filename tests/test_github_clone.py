@@ -81,8 +81,9 @@ def test_first_checkout_uses_configured_protocol(
             "--",
             "--recurse-submodules",
         ]
+        assert not {"capture_output", "stdout", "stderr"} & kwargs.keys()
         (dest / ".git").mkdir(parents=True)
-        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        return subprocess.CompletedProcess(cmd, 0)
 
     monkeypatch.setattr(subprocess, "run", run)
     github.clone_or_reuse("org/repo", dest)
@@ -94,13 +95,22 @@ def test_clone_failure_is_actionable(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(
-        subprocess,
-        "run",
-        lambda *a, **k: subprocess.CompletedProcess(
-            [], 1, stdout="", stderr="auth failed"
-        ),
+        subprocess, "run", lambda *a, **k: subprocess.CompletedProcess([], 128)
     )
-    with pytest.raises(click.ClickException, match="clone.*org/repo.*gh auth"):
+    with pytest.raises(
+        click.ClickException, match=r"clone org/repo \(exit 128\).*gh auth"
+    ):
+        github.clone_or_reuse("org/repo", tmp_path / "repo")
+
+
+def test_clone_reports_missing_gh(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def run(*a, **k):
+        raise FileNotFoundError("gh")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    with pytest.raises(click.ClickException, match="gh not found"):
         github.clone_or_reuse("org/repo", tmp_path / "repo")
 
 

@@ -34,8 +34,8 @@ def open_pr_action(template_key: str, name_prefix: str, slug: str, number: int) 
     if not command_template:
         raise click.UsageError(f"set {template_key} (see decky config init)")
     slug = slug.lower()
-    # Owners cannot contain underscores, so this boundary is unambiguous.
-    identity = slug.replace("/", "__")
+    # GitHub owner and repository names cannot contain "+".
+    identity = slug.replace("/", "+")
     name = f"{name_prefix}-{identity}-{number}"
     parent, _ = config.resolve("pr.dir")
     dest_root = Path(parent or ".").expanduser().resolve()

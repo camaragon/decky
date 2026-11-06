@@ -280,14 +280,23 @@ def load_pr_lists() -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
 
 
 def clone(slug: str, dest: Path) -> None:
-    result = run_gh(
-        "repo", "clone", f"github.com/{slug}", str(dest), "--", "--recurse-submodules"
-    )
-    if result.returncode != 0:
-        detail = (result.stderr or result.stdout or "").strip()[:500]
+    cmd = [
+        "gh",
+        "repo",
+        "clone",
+        f"github.com/{slug}",
+        str(dest),
+        "--",
+        "--recurse-submodules",
+    ]
+    try:
+        code = subprocess.run(cmd, check=False).returncode
+    except FileNotFoundError:
+        raise click.ClickException("gh not found; install the GitHub CLI") from None
+    if code != 0:
         raise click.ClickException(
-            f"could not clone {slug}; check gh auth status and Git access"
-            + (f": {detail}" if detail else "")
+            f"could not clone {slug} (exit {code}); see the output above, "
+            "then check gh auth status and Git access to the repository and its submodules"
         )
 
 

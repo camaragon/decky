@@ -8,7 +8,7 @@ Install [uv](https://docs.astral.sh/uv/), then:
 uv tool install git+https://github.com/camaragon/decky.git
 ```
 
-You also need Git and the [GitHub CLI](https://cli.github.com/) (`gh`) logged in for PR commands. Review checkouts use `gh repo clone` with the configured GitHub protocol (`gh config get git_protocol --host github.com`), supporting HTTPS and SSH. Clones include submodules; their remotes need their own Git access and credentials.
+You also need Git and the [GitHub CLI](https://cli.github.com/) (`gh`) logged in for PR commands. Review checkouts use `gh repo clone` with the configured GitHub protocol (`gh config get git_protocol --host github.com`), supporting HTTPS and SSH. Clones include submodules; their remotes need their own Git access and credentials. Clone progress streams to the terminal, and a failed clone stops the review with an actionable error.
 
 ## Quick start
 
@@ -34,14 +34,14 @@ Default filters hide drafts, PRs whose checks are not `pass`, and authors listed
 
 ## `decky pr review`
 
-Opens or focuses a tmux window (default) or cmux workspace named `pr-<owner>__<repo>-<number>`, runs `review.command`, and on the tmux path runs `browser.command` with the PR URL. Owner and repository names are normalized to lowercase.
+Opens or focuses a tmux window (default) or cmux workspace named `pr-<owner>+<repo>-<number>`, runs `review.command`, and on the tmux path runs `browser.command` with the PR URL. Owner and repository names are normalized to lowercase; `+` cannot appear in GitHub names, so these never collide with legacy `pr-<repo>-<number>` surfaces.
 
 ```bash
 decky pr review owner/repo 123
 decky pr r my-repo 5    # requires work_org when REPO has no slash
 ```
 
-Checkout directory: `pr.dir/<owner>__<repo>` (reused only when origin matches the GitHub host and exact owner/repository; no `gh pr checkout`). The origin is checked before focusing an existing review surface. Legacy `<repo-short>` directories and `pr-<repo>-<number>` surfaces are left untouched; new reviews use the owner-qualified identity.
+Checkout directory: `pr.dir/<owner>+<repo>` (reused only when origin matches the GitHub host and exact owner/repository; no `gh pr checkout`). The origin is checked before focusing an existing review surface. Legacy `<repo-short>` directories and `pr-<repo>-<number>` surfaces are left untouched; new reviews use the owner-qualified identity.
 
 `terminal = "tmux"` is the default. Windows live in session `decky`, or the current tmux session when `$TMUX` is set. Set `terminal = "cmux"` to use cmux instead (`browser.command` is ignored on that path).
 
