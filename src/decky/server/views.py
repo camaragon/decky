@@ -27,7 +27,7 @@ def fetch_table(kind: str) -> dict:
     if kind not in lists:
         raise click.ClickException(f"unknown table {kind!r}")
     rows = [pr_row(p) for p in lists[kind]]
-    return {"rows": rows, "notes": notes}
+    return {"rows": rows, "notes": notes[kind]}
 
 
 def _text(value: Any) -> str | None:

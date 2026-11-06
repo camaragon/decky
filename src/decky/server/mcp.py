@@ -47,7 +47,7 @@ def list_prs(kind: PrKind, show_all: bool = False) -> dict[str, Any]:
     return {
         "rows": [views.pr_row(p) for p in rows],
         "hidden": hidden,
-        "notes": notes,
+        "notes": notes[kind],
     }
 
 

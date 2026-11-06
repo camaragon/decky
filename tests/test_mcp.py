@@ -38,7 +38,7 @@ def test_list_prs(monkeypatch: pytest.MonkeyPatch) -> None:
     }
     monkeypatch.setattr(
         "decky.server.mcp.github.load_pr_lists",
-        lambda: ({"review": [row], "team": [], "mine": []}, []),
+        lambda: ({"review": [row], "team": [], "mine": []}, {"review": [], "team": [], "mine": []}),
     )
     out = mcp.list_prs("review")
     assert out["rows"][0]["url"] == "https://github.com/o/r/pull/1"

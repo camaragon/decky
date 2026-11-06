@@ -51,7 +51,7 @@ def test_table_review(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> No
     }
     monkeypatch.setattr(
         "decky.server.views.github.load_pr_lists",
-        lambda: ({"review": [row], "team": [], "mine": []}, []),
+        lambda: ({"review": [row], "team": [], "mine": []}, {"review": [], "team": [], "mine": []}),
     )
     res = client.get("/api/tables/review")
     assert res.status_code == 200

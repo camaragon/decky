@@ -91,23 +91,52 @@ def test_mine_from_viewer(monkeypatch: pytest.MonkeyPatch) -> None:
     assert [p["number"] for p in lists["mine"]] == [3]
 
 
-def test_truncation_note(monkeypatch: pytest.MonkeyPatch) -> None:
-    payload = {
+def _truncation_payload(mine: bool, search: bool) -> dict:
+    return {
         "data": {
             "viewer": {
                 "login": "v",
-                "pullRequests": {"pageInfo": {"hasNextPage": True}, "nodes": []},
+                "pullRequests": {"pageInfo": {"hasNextPage": mine}, "nodes": []},
             },
-            "reviewSearch": {"pageInfo": {"hasNextPage": False}, "nodes": []},
+            "reviewSearch": {"pageInfo": {"hasNextPage": search}, "nodes": []},
         }
     }
+
+
+@pytest.mark.parametrize(
+    "mine,search,expected",
+    [
+        (True, False, {"mine": ["your pull requests truncated at GitHub page size"], "review": [], "team": []}),
+        (
+            False,
+            True,
+            {
+                "mine": [],
+                "review": ["review request search truncated at GitHub page size"],
+                "team": ["review request search truncated at GitHub page size"],
+            },
+        ),
+    ],
+)
+def test_truncation_note_scoped_to_list(
+    monkeypatch: pytest.MonkeyPatch, tmp_path, mine: bool, search: bool, expected: dict
+) -> None:
+    from fastapi.testclient import TestClient
+
+    from decky.server.app import create_app
+
+    monkeypatch.setenv("DECKY_CONFIG", str(tmp_path / "config.toml"))
+    payload = _truncation_payload(mine, search)
     monkeypatch.setattr(
         github,
         "run_gh",
         lambda *a: subprocess.CompletedProcess([], 0, stdout=json.dumps(payload)),
     )
     _, notes = github.load_pr_lists()
-    assert notes == ["your pull requests truncated at GitHub page size"]
+    assert notes == expected
+    client = TestClient(create_app(static=None), base_url="http://127.0.0.1")
+    for kind, kind_notes in expected.items():
+        assert client.get(f"/api/tables/{kind}").json()["notes"] == kind_notes
 
 
 def test_watch_repo_search_merged(monkeypatch: pytest.MonkeyPatch) -> None:
