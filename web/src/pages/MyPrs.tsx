@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
+import { QueryFeedback } from "../components/QueryFeedback";
 import { PrFilterBar } from "../components/PrFilterBar";
 import { PrSection } from "../components/PrSection";
 import { Button } from "../components/ui/button";
@@ -38,6 +39,8 @@ export function MyPrsPage() {
     else mine.refetch();
   }
 
+  if (!meta.data) return <QueryFeedback label="settings" query={meta} />;
+
   const jiraBrowseUrl = meta.data?.jiraBrowseUrl ?? null;
   const rows =
     useQueueSource && queueActive(queue.data)
@@ -54,14 +57,18 @@ export function MyPrsPage() {
           Refresh
         </Button>
       </div>
-      <PrFilterBar filters={filters} onChange={setFilters} onReset={() => setFilters(defaultFilters())} />
-      {useQueueSource && queue.isLoading && !queueActive(queue.data) ? (
-        <p className="py-2 text-xs text-muted-foreground">Loading queue…</p>
-      ) : null}
-      {useQueueSource && queue.error ? (
-        <p className="py-2 text-xs text-red-600 dark:text-red-400">{String(queue.error)}</p>
-      ) : null}
-      {!useQueueSource || queueActive(queue.data) || queue.error ? (
+      <QueryFeedback label="settings" query={meta} />
+      <QueryFeedback label="config" query={config} />
+      <PrFilterBar
+        filters={filters}
+        onChange={setFilters}
+        onReset={() => setFilters(defaultFilters())}
+      />
+      <QueryFeedback
+        label={useQueueSource ? "queue" : "my PRs"}
+        query={useQueueSource ? queue : mine}
+      />
+      {(useQueueSource ? queueActive(queue.data) : Boolean(mine.data)) ? (
         <PrSection
           title="My PRs"
           rows={rows}

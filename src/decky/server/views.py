@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import json
+import os
+from typing import Any
+
 import click
 
 from decky import config, github
@@ -23,26 +27,47 @@ def fetch_table(kind: str) -> dict:
     if kind not in lists:
         raise click.ClickException(f"unknown table {kind!r}")
     rows = [pr_row(p) for p in lists[kind]]
-    return {"rows": rows, "notes": notes}
+    return {"rows": rows, "notes": notes[kind]}
+
+
+def _text(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, (list, dict)):
+        return json.dumps(value, default=str)
+    if isinstance(value, bool):
+        return str(value).lower()
+    return str(value)
+
+
+def _raw_value(s: config.Setting) -> tuple[Any, str]:
+    if os.environ.get(s.env):
+        return os.environ[s.env], f"env:{s.env}"
+    try:
+        return config.file_value(s.key), "file"
+    except click.ClickException:
+        return None, "file"
 
 
 def config_settings() -> list[dict]:
+    """Return editable text per key; invalid keys carry their raw value and error."""
     out: list[dict] = []
     for key in sorted(config.SETTINGS):
         s = config.SETTINGS[key]
-        value, source = config.resolve(key)
-        shown = value
-        if value is None:
-            shown = None
-        elif isinstance(value, list):
-            shown = ",".join(str(v) for v in value)
+        error = None
+        try:
+            value, source = config.resolve(key)
+        except click.ClickException as e:
+            value, source = _raw_value(s)
+            error = e.message
         out.append(
             {
                 "key": key,
-                "value": shown,
+                "value": _text(value),
                 "source": source,
                 "help": s.help,
                 "kind": s.kind,
+                "error": error,
             }
         )
     return out

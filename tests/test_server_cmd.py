@@ -36,7 +36,8 @@ def test_invalid_port_config(
     cfg.write_text('[server]\nport = "nope"\n', encoding="utf-8")
     monkeypatch.setenv("DECKY_CONFIG", str(cfg))
     result = runner.invoke(cli, ["server", "--no-open"])
-    assert result.exit_code == 2
+    assert result.exit_code == 1
+    assert "server.port (file) must be a positive integer" in result.output
 
 
 def test_invalid_log_level(runner: CliRunner) -> None:

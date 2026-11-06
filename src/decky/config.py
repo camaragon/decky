@@ -24,7 +24,7 @@ class Setting:
     env: str
     help: str
     default: Any = None
-    kind: str = "str"  # str | bool | path | list_str | choice
+    kind: str = "str"  # str | bool | path | list_str | choice | int
     choices: tuple[str, ...] | None = None
 
 
@@ -76,12 +76,14 @@ SETTINGS: dict[str, Setting] = {
             "DECKY_QUEUE_TIMEOUT",
             "Seconds to wait for queue.command stdout",
             "30",
+            kind="int",
         ),
         Setting(
             "queue.max_stdout",
             "DECKY_QUEUE_MAX_STDOUT",
             "Maximum queue.command stdout size in bytes",
             "1048576",
+            kind="int",
         ),
         Setting(
             "jira.browse_url",
@@ -104,6 +106,7 @@ SETTINGS: dict[str, Setting] = {
             "DECKY_SERVER_PORT",
             "Port decky server listens on",
             "8777",
+            kind="int",
         ),
         Setting(
             "server.log_level",
@@ -170,66 +173,88 @@ def load_file() -> dict[str, Any]:
             return tomllib.load(f)
     except FileNotFoundError:
         return {}
-    except tomllib.TOMLDecodeError as e:
+    except (tomllib.TOMLDecodeError, OSError) as e:
         raise click.ClickException(f"invalid config file {path}: {e}") from None
 
 
 def save_file(data: dict[str, Any]) -> None:
     path = config_path()
-    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".config-")
+    try:
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".config-")
+    except OSError as e:
+        raise click.ClickException(f"cannot save config file {path}: {e.strerror}") from None
     try:
         with os.fdopen(fd, "wb") as f:
             tomli_w.dump(data, f)
         os.replace(tmp, path)
         os.chmod(path, 0o600)
-    except BaseException:
+    except OSError as e:
+        raise click.ClickException(f"cannot save config file {path}: {e.strerror}") from None
+    finally:
         if os.path.exists(tmp):
             os.unlink(tmp)
-        raise
 
 
 def file_value(key: str, data: dict[str, Any] | None = None) -> Any:
     node: Any = load_file() if data is None else data
     for part in key.split("."):
-        if not isinstance(node, dict) or part not in node:
+        if not isinstance(node, dict):
+            raise click.ClickException(f"{key}: {part!r} requires a config table")
+        if part not in node:
             return None
         node = node[part]
     return node
 
 
-def _parse_env_list(raw: str) -> list[str]:
-    raw = raw.strip()
-    if raw.startswith("["):
-        value = json.loads(raw)
+def validate_value(s: Setting, value: Any, source: str) -> Any:
+    def invalid(expected: str) -> None:
+        raise click.ClickException(f"{s.key} ({source}) must be {expected}")
+
+    if s.kind == "bool":
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str) and value.lower() in BOOLEANS:
+            return BOOLEANS[value.lower()]
+        invalid("true or false")
+    if s.kind == "int":
+        if isinstance(value, bool) or not isinstance(value, (str, int)):
+            invalid("a positive integer")
+        try:
+            number = int(value)
+        except ValueError:
+            invalid("a positive integer")
+        if number <= 0:
+            invalid("a positive integer")
+        return number
+    if s.kind == "list_str":
+        if isinstance(value, str):
+            raw = value.strip()
+            if raw.startswith("["):
+                try:
+                    value = json.loads(raw)
+                except json.JSONDecodeError:
+                    invalid("a valid JSON string list or comma-separated strings")
+            else:
+                value = [part.strip() for part in raw.split(",") if part.strip()]
         if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
-            raise click.ClickException(f"invalid JSON list in env value: {raw!r}")
+            invalid("a list of strings")
         return value
-    return [part.strip() for part in raw.split(",") if part.strip()]
+    if not isinstance(value, str):
+        invalid("a string")
+    if s.kind == "choice" and value not in (s.choices or TERMINAL_CHOICES):
+        invalid(f"one of {', '.join(s.choices or TERMINAL_CHOICES)}")
+    return value
 
 
 def env_value(s: Setting) -> Any:
-    raw = os.environ[s.env]
-    if s.kind == "str" or s.kind == "path" or s.kind == "choice":
-        return raw
-    if s.kind == "bool":
-        parsed = BOOLEANS.get(raw.lower())
-        if parsed is None:
-            raise click.ClickException(f"invalid boolean in {s.env}: {raw!r}")
-        return parsed
-    if s.kind == "list_str":
-        return _parse_env_list(raw)
-    return raw
+    return validate_value(s, os.environ[s.env], s.env)
 
 
 def _coerce_default(s: Setting) -> Any:
     if s.default is None:
         return None
-    if s.kind == "bool":
-        return BOOLEANS.get(str(s.default).lower(), s.default)
-    if s.kind == "list_str" and isinstance(s.default, str):
-        return json.loads(s.default)
-    return s.default
+    return validate_value(s, s.default, "default")
 
 
 def resolve(key: str) -> tuple[Any, str]:
@@ -239,7 +264,7 @@ def resolve(key: str) -> tuple[Any, str]:
         return env_value(s), f"env:{s.env}"
     value = file_value(s.key)
     if value is not None:
-        return value, "file"
+        return validate_value(s, value, "file"), "file"
     default = _coerce_default(s)
     if default is not None:
         return default, "default"
@@ -247,30 +272,21 @@ def resolve(key: str) -> tuple[Any, str]:
 
 
 def parse_set_value(key: str, raw: str) -> Any:
-    s = setting(key)
-    if s.kind == "bool":
-        parsed = BOOLEANS.get(raw.lower())
-        if parsed is None:
-            raise click.BadParameter(f"{key} must be true or false, not {raw!r}")
-        return parsed
-    if s.kind == "list_str":
-        return _parse_env_list(raw)
-    if s.kind == "choice":
-        allowed = s.choices or TERMINAL_CHOICES
-        if raw not in allowed:
-            raise click.BadParameter(f"{key} must be one of {', '.join(allowed)}")
-        return raw
-    return raw
+    return validate_value(setting(key), raw, "input")
 
 
 def set_value(key: str, value: Any) -> bool:
     """Write KEY to the config file; return True if env overrides it."""
     s = setting(key)
+    value = validate_value(s, value, "input")
     data = load_file()
     *tables, name = key.split(".")
     node = data
     for table in tables:
-        node = node.setdefault(table, {})
+        child = node.setdefault(table, {})
+        if not isinstance(child, dict):
+            raise click.ClickException(f"{key}: {table!r} must be a config table")
+        node = child
     node[name] = value
     save_file(data)
     return bool(os.environ.get(s.env))
@@ -283,8 +299,10 @@ def unset_value(key: str) -> None:
     parents = [data]
     for table in tables:
         child = parents[-1].get(table)
-        if not isinstance(child, dict):
+        if child is None:
             return
+        if not isinstance(child, dict):
+            raise click.ClickException(f"{key}: {table!r} must be a config table")
         parents.append(child)
     parents[-1].pop(name, None)
     for table, parent in zip(reversed(tables), reversed(parents[:-1])):
@@ -349,7 +367,7 @@ class SettingOption(click.Option):
     def get_default(self, ctx: click.Context, call: bool = True) -> Any:
         value = file_value(self.setting_key)
         if value is not None:
-            return value
+            return validate_value(setting(self.setting_key), value, "file")
         return super().get_default(ctx, call=call)
 
 

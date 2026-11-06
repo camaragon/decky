@@ -50,6 +50,8 @@ PRS = [
     },
 ]
 
+NO_NOTES = {"review": [], "team": [], "mine": []}
+
 LISTS = {"review": PRS, "team": [], "mine": []}
 
 
@@ -59,7 +61,7 @@ def runner() -> CliRunner:
 
 
 def test_table_with_all(monkeypatch: pytest.MonkeyPatch, runner: CliRunner) -> None:
-    monkeypatch.setattr(pr_cmd, "fetch_lists", lambda: (LISTS, []))
+    monkeypatch.setattr(pr_cmd, "fetch_lists", lambda: (LISTS, NO_NOTES))
     result = runner.invoke(cli, ["pr", "ls", "--all"])
     assert result.exit_code == 0, result.output
     assert "DRAFT" in result.output.splitlines()[0]
@@ -67,7 +69,7 @@ def test_table_with_all(monkeypatch: pytest.MonkeyPatch, runner: CliRunner) -> N
 
 
 def test_default_filter(monkeypatch: pytest.MonkeyPatch, runner: CliRunner) -> None:
-    monkeypatch.setattr(pr_cmd, "fetch_lists", lambda: (LISTS, []))
+    monkeypatch.setattr(pr_cmd, "fetch_lists", lambda: (LISTS, NO_NOTES))
     result = runner.invoke(cli, ["pr", "ls"])
     assert result.exit_code == 0
     assert "hidden (draft, not passing, or hidden author)" in result.output
@@ -81,13 +83,13 @@ def test_mine_and_team_error(runner: CliRunner) -> None:
 
 
 def test_empty(monkeypatch: pytest.MonkeyPatch, runner: CliRunner) -> None:
-    monkeypatch.setattr(pr_cmd, "fetch_lists", lambda: ({"review": [], "team": [], "mine": []}, []))
+    monkeypatch.setattr(pr_cmd, "fetch_lists", lambda: ({"review": [], "team": [], "mine": []}, NO_NOTES))
     result = runner.invoke(cli, ["pr", "ls"])
     assert result.output.strip() == "no review requests"
 
 
 def test_interactive_open(monkeypatch: pytest.MonkeyPatch, runner: CliRunner) -> None:
-    monkeypatch.setattr(pr_cmd, "fetch_lists", lambda: (LISTS, []))
+    monkeypatch.setattr(pr_cmd, "fetch_lists", lambda: (LISTS, NO_NOTES))
     picks = [("open", 1)]
     monkeypatch.setattr(
         tui,
@@ -103,7 +105,7 @@ def test_interactive_open(monkeypatch: pytest.MonkeyPatch, runner: CliRunner) ->
 
 def test_interactive_mine_open_review(monkeypatch: pytest.MonkeyPatch, runner: CliRunner) -> None:
     lists = {"review": [], "team": [], "mine": PRS}
-    monkeypatch.setattr(pr_cmd, "fetch_lists", lambda: (lists, []))
+    monkeypatch.setattr(pr_cmd, "fetch_lists", lambda: (lists, NO_NOTES))
     picks = [("open", 0)]
     monkeypatch.setattr(
         tui,

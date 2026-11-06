@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import subprocess
+from subprocess import CompletedProcess
+
 import pytest
 
 from decky import browser
@@ -20,6 +23,6 @@ def test_substitutes_url(monkeypatch: pytest.MonkeyPatch) -> None:
         "resolve",
         lambda key: ("open -a Dia {url}", "file") if key == "browser.command" else (None, "unset"),
     )
-    monkeypatch.setattr(browser.subprocess, "run", lambda argv, **k: runs.append(argv))
+    monkeypatch.setattr(subprocess, "run", lambda argv, **k: (runs.append(argv), CompletedProcess(argv, 0))[1])
     browser.open_http_url("http://127.0.0.1:4387/session/ab")
     assert runs == [["open", "-a", "Dia", "http://127.0.0.1:4387/session/ab"]]

@@ -124,7 +124,7 @@ def pr_rows(prs: list[dict], header: bool = False, drafts: bool = False) -> list
     ]
 
 
-def fetch_lists() -> tuple[dict[str, list[dict]], list[str]]:
+def fetch_lists() -> tuple[dict[str, list[dict]], dict[str, list[str]]]:
     lists, notes = github.load_pr_lists()
     return lists, notes
 
@@ -171,7 +171,7 @@ def list_prs(
     lists, truncation_notes = fetch_lists()
     if not use_interactive:
         prs, hidden = filter_prs(lists[kind], show_all)
-        for note in truncation_notes:
+        for note in truncation_notes[kind]:
             click.echo(note, err=True)
         if hidden:
             click.echo(hidden_note(hidden), err=True)
@@ -190,7 +190,7 @@ def list_prs(
         hint_parts = []
         if hidden:
             title += f" ({hidden} hidden)"
-        for note in truncation_notes:
+        for note in truncation_notes[kind]:
             hint_parts.append(note)
         following = KINDS[(KINDS.index(kind) + 1) % len(KINDS)]
         keys = f"tab {TITLES[following]}, a {'filter' if show_all else 'show all'}"

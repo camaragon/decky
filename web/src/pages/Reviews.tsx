@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
+import { QueryFeedback } from "../components/QueryFeedback";
 import { PrFilterBar } from "../components/PrFilterBar";
 import { PrSection } from "../components/PrSection";
 import { Button } from "../components/ui/button";
@@ -49,6 +50,8 @@ export function ReviewsPage() {
     }
   }
 
+  if (!meta.data) return <QueryFeedback label="settings" query={meta} />;
+
   const jiraBrowseUrl = meta.data?.jiraBrowseUrl ?? null;
 
   if (useQueueSource) {
@@ -67,13 +70,14 @@ export function ReviewsPage() {
             Refresh
           </Button>
         </div>
-        <PrFilterBar filters={filters} onChange={setFilters} onReset={() => setFilters(defaultFilters())} />
-        {queue.isLoading && !queueActive(queue.data) ? (
-          <p className="py-2 text-xs text-muted-foreground">Loading queue…</p>
-        ) : null}
-        {queue.error ? (
-          <p className="py-2 text-xs text-red-600 dark:text-red-400">{String(queue.error)}</p>
-        ) : null}
+        <QueryFeedback label="settings" query={meta} />
+        <QueryFeedback label="config" query={config} />
+        <PrFilterBar
+          filters={filters}
+          onChange={setFilters}
+          onReset={() => setFilters(defaultFilters())}
+        />
+        <QueryFeedback label="queue" query={queue} />
         {queueActive(queue.data) ? (
           <>
             <PrSection
@@ -114,23 +118,35 @@ export function ReviewsPage() {
           Refresh
         </Button>
       </div>
-      <PrFilterBar filters={filters} onChange={setFilters} onReset={() => setFilters(defaultFilters())} />
-      <PrSection
-        title="Review requests"
-        rows={review.data?.rows ?? []}
-        hideAuthors={hideAuthors}
+      <QueryFeedback label="settings" query={meta} />
+      <QueryFeedback label="config" query={config} />
+      <PrFilterBar
         filters={filters}
-        empty={EMPTY.githubReview}
-        reviewAction
+        onChange={setFilters}
+        onReset={() => setFilters(defaultFilters())}
       />
-      <PrSection
-        title="Team review requests"
-        rows={team.data?.rows ?? []}
-        hideAuthors={hideAuthors}
-        filters={filters}
-        empty={EMPTY.githubTeam}
-        reviewAction
-      />
+      <QueryFeedback label="review requests" query={review} />
+      {review.data ? (
+        <PrSection
+          title="Review requests"
+          rows={review.data?.rows ?? []}
+          hideAuthors={hideAuthors}
+          filters={filters}
+          empty={EMPTY.githubReview}
+          reviewAction
+        />
+      ) : null}
+      <QueryFeedback label="team review requests" query={team} />
+      {team.data ? (
+        <PrSection
+          title="Team review requests"
+          rows={team.data?.rows ?? []}
+          hideAuthors={hideAuthors}
+          filters={filters}
+          empty={EMPTY.githubTeam}
+          reviewAction
+        />
+      ) : null}
     </div>
   );
 }

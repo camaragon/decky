@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import json
 import re
-import shlex
 import subprocess
 from typing import Any
 
 import click
 
 from decky import config
+from decky.process import run_command, split_command
 
 DEFAULT_TIMEOUT = 30
 DEFAULT_MAX_STDOUT = 1_048_576
@@ -101,10 +101,10 @@ def load_queue() -> dict[str, Any]:
         return {"disabled": True}
     timeout = queue_timeout()
     max_stdout = queue_max_stdout()
-    argv = shlex.split(str(command))
+    argv = split_command(str(command), "queue.command")
     try:
-        result = subprocess.run(
-            argv,
+        result = run_command(
+            argv, "queue.command",
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -113,8 +113,7 @@ def load_queue() -> dict[str, Any]:
     except subprocess.TimeoutExpired as e:
         raise click.ClickException(f"queue.command timed out after {timeout}s") from e
     if result.returncode != 0:
-        err = (result.stderr or result.stdout or "").strip()
-        raise click.ClickException(err or f"queue.command exited {result.returncode}")
+        raise click.ClickException(f"queue.command exited {result.returncode}; check the command")
     stdout = result.stdout or ""
     size = len(stdout.encode("utf-8"))
     if size > max_stdout:
