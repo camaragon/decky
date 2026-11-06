@@ -172,6 +172,64 @@ def test_watch_repo_search_merged(monkeypatch: pytest.MonkeyPatch) -> None:
     assert [p["number"] for p in lists["review"]] == [5]
 
 
+def _truncated_reviewers(node: dict) -> dict:
+    node["reviewRequests"]["pageInfo"]["hasNextPage"] = True
+    return node
+
+
+def test_reviewer_truncation_follows_final_bucket(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = {
+        "data": {
+            "viewer": {
+                "login": "viewer",
+                "pullRequests": {"pageInfo": {"hasNextPage": False}, "nodes": []},
+            },
+            "reviewSearch": {
+                "pageInfo": {"hasNextPage": False},
+                "nodes": [
+                    _truncated_reviewers(_node("o/r", 1, user_request=False, team_request=True)),
+                    _node("o/r", 2, user_request=True),
+                ],
+            },
+            "watchTeam0": {
+                "pageInfo": {"hasNextPage": False},
+                "nodes": [_truncated_reviewers(_node("o/r", 2, user_request=False, team_request=True))],
+            },
+            "watchRepo0": {
+                "pageInfo": {"hasNextPage": False},
+                "nodes": [
+                    _truncated_reviewers(
+                        _node("o/r", 1, author="other", user_request=False, team_request=True)
+                    )
+                ],
+            },
+        }
+    }
+    monkeypatch.setattr(
+        github,
+        "run_gh",
+        lambda *a: subprocess.CompletedProcess([], 0, stdout=json.dumps(payload)),
+    )
+    monkeypatch.setattr(
+        github.config,
+        "resolve",
+        lambda key: (
+            (["o/r"], "file")
+            if key == "pr.watch_repos"
+            else ((["o/eng"], "file") if key == "pr.watch_teams" else (None, "unset"))
+        ),
+    )
+    lists, notes = github.load_pr_lists()
+    assert [p["number"] for p in lists["review"]] == [1, 2]
+    assert lists["team"] == []
+    assert notes == {
+        "review": ["reviewers on review requests truncated at GitHub page size"],
+        "team": [],
+        "mine": [],
+    }
+    assert all("review_requests_truncated" not in p for p in lists["review"])
+
+
 def test_retry_then_success(monkeypatch: pytest.MonkeyPatch) -> None:
     bad = subprocess.CompletedProcess([], 1, stderr="rate limit exceeded")
     good = subprocess.CompletedProcess([], 0, stdout="ok")

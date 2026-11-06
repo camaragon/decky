@@ -219,9 +219,6 @@ def load_pr_lists() -> tuple[dict[str, list[dict[str, Any]]], dict[str, list[str
 
     def add_row(row: dict[str, Any], bucket: str) -> None:
         key = _row_key(row)
-        truncated = row.pop("review_requests_truncated", False)
-        if truncated:
-            _note_truncation(notes, (bucket,), {"hasNextPage": True}, "reviewers on review requests")
         if bucket == "review":
             if key in review_keys:
                 return
@@ -272,6 +269,10 @@ def load_pr_lists() -> tuple[dict[str, list[dict[str, Any]]], dict[str, list[str
             if same_login(row["author"], login):
                 continue
             add_row(row, "review")
+
+    for bucket, rows in (("review", review), ("team", team)):
+        if any([row.pop("review_requests_truncated", False) for row in rows]):
+            _note_truncation(notes, (bucket,), {"hasNextPage": True}, "reviewers on review requests")
 
     sort_key = lambda pr: (pr["repo"], pr["number"])
     return (
