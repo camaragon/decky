@@ -35,7 +35,7 @@ Default filters hide drafts, PRs whose checks are not `pass`, and authors listed
 ### JSON interface (version 1)
 
 ```bash
-decky pr list --json        # all three buckets, default filters
+decky pr list --json        # all four buckets, default filters
 decky pr list --json --all  # include hidden PRs
 decky pr list --json --mine # only the mine bucket (--team selects team)
 ```
@@ -44,8 +44,9 @@ JSON mode overrides interactive settings, including `-i`. Success prints one JSO
 object to stdout; failures exit nonzero with an error on stderr. An empty result
 uses empty arrays. `--mine` and `--team` remain mutually exclusive.
 
-List envelope: `{"version":1,"buckets":{"review":[],"team":[],"mine":[]},"hidden":{"review":0,"team":0,"mine":0},"notes":[]}`.
-Selection flags omit unselected bucket and hidden-count keys. `hidden` counts PRs
+List envelope: `{"version":1,"buckets":{"review":[],"team":[],"mine":[],"watched":[]},"hidden":{"review":0,"team":0,"mine":0,"watched":0},"notes":[]}`.
+`watched` holds PRs found only through `pr.watch_owners`. Selection flags omit
+unselected bucket and hidden-count keys. `hidden` counts PRs
 removed by the filters in each selected bucket; `notes` contains warning strings.
 
 Each PR has these fields (snake_case is part of the interface):
@@ -158,7 +159,9 @@ Placeholders for `review.command` and `browser.command`: `{slug}` `{owner}` `{re
 
 Watched owners and repositories contribute open, non-archived PRs by other authors
 that you have not reviewed. Duplicates appear once; your own PRs stay in `mine`.
-Team sources contribute to `team` unless you are directly requested. All sources
+Team sources contribute to `team` unless you are directly requested. Watched
+repositories contribute to `review`; watched owners contribute only PRs absent from
+`review` and `team`, in the JSON `watched` bucket. All sources
 share the usual filters. List settings accept TOML arrays or comma-separated env values.
 
 ## License

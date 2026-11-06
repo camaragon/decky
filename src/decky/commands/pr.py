@@ -171,11 +171,10 @@ def list_prs(
     if mine and team:
         raise click.UsageError("cannot use --mine and --team together")
     kind = "mine" if mine else "team" if team else "review"
-    use_interactive = False if as_json else config.interactive(interactive)
 
-    lists, truncation_notes = fetch_lists()
     if as_json:
-        selected = (kind,) if mine or team else KINDS
+        lists, truncation_notes = github.load_pr_lists(details=True)
+        selected = (kind,) if mine or team else (*KINDS, "watched")
         filtered = {key: filter_prs(lists[key], show_all) for key in selected}
         click.echo(
             json.dumps(
@@ -188,6 +187,9 @@ def list_prs(
             )
         )
         return
+
+    use_interactive = config.interactive(interactive)
+    lists, truncation_notes = fetch_lists()
     if not use_interactive:
         prs, hidden = filter_prs(lists[kind], show_all)
         for note in truncation_notes:
