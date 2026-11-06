@@ -188,7 +188,8 @@ def pr_from_node(node: dict[str, Any], details: bool = False) -> dict[str, Any]:
 def _gh_json(*args: str) -> Any:
     result = run_gh(*args)
     if result.returncode:
-        raise click.ClickException(f"gh request failed: {result.stderr.strip()}")
+        operation = "api graphql" if args[:2] == ("api", "graphql") else "request"
+        raise click.ClickException(f"gh {operation} failed: {result.stderr.strip()}")
     try:
         payload = json.loads(result.stdout)
     except json.JSONDecodeError:
