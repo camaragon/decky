@@ -4,6 +4,7 @@ import { ChevronRight } from "lucide-react";
 
 import { fetchInbox, sendAnswer, type InboxPr, type InboxStack } from "../lib/api";
 import { Button } from "../components/ui/button";
+import { ReviewSummary, RiskLabel } from "../components/ReviewSummary";
 
 function plain(text: string) {
   return text.replace(/<[^>]*>/g, "").replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
@@ -86,6 +87,8 @@ export function InboxPage() {
               <ChevronRight aria-hidden="true" className="size-4 shrink-0 group-open/pr:rotate-90" />
               <h3 className="min-w-0 flex-1 basis-[calc(100%-1.5rem)] font-semibold sm:basis-64">{order + 1}. #{pr.number} {pr.title}</h3>
               <span className="flex w-full flex-wrap gap-2 pl-6 text-xs sm:w-auto sm:pl-0">
+                {pr.review_result ? <RiskLabel risk={pr.review_result.risk} /> : null}
+                {pr.review_result?.outdated ? <span className="rounded border border-amber-600 px-2 py-1 text-amber-800 dark:text-amber-400">Outdated result</span> : null}
                 <span className={`rounded border px-2 py-1 ${pr.checks === "fail" ? "border-red-500 bg-red-500/10 text-red-700 dark:text-red-400" : pr.checks === "pending" ? "border-border text-amber-700 dark:text-amber-400" : "border-border text-muted-foreground"}`}>Checks: {pr.checks}</span>
                 <span className={`rounded border px-2 py-1 ${pr.review_decision === "CHANGES_REQUESTED" ? "border-red-500 bg-red-500/10 text-red-700 dark:text-red-400" : "border-border text-muted-foreground"}`}>{pr.review_decision?.replaceAll("_", " ") || "No review decision"}</span>
                 {pr.draft ? <span className="rounded border border-border px-2 py-1 text-muted-foreground">Draft</span> : null}
@@ -93,7 +96,7 @@ export function InboxPage() {
               </span>
             </summary>
             <div className="space-y-3 p-3 pt-0">
-              <p className="whitespace-pre-wrap text-sm">{summary(pr.body)}</p>
+              {pr.review_result ? <ReviewSummary result={pr.review_result} /> : <p className="whitespace-pre-wrap text-sm">{summary(pr.body)}</p>}
               <details><summary className="cursor-pointer">Full description</summary><p className="whitespace-pre-wrap text-sm">{plain(pr.body) || "No description provided."}</p></details>
               <details><summary className="cursor-pointer">{pr.changed_files} files changed · +{pr.files.reduce((n, f) => n + f.additions, 0)} / −{pr.files.reduce((n, f) => n + f.deletions, 0)}</summary>
                 <ul className="space-y-2 text-sm">{pr.files.map(file => <li key={file.path}>{file.path} <span className="whitespace-nowrap">+{file.additions} / −{file.deletions}</span></li>)}</ul></details>
