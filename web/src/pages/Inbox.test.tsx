@@ -63,3 +63,35 @@ it("starts stacks and PR details collapsed and expands them on click", async () 
   expect(details).not.toHaveAttribute("open");
   client.clear();
 });
+
+it.each([false, true])("shows local risk in the row and both opinions in the expanded card (outdated: %s)", async outdated => {
+  window.history.replaceState({}, "", "/inbox");
+  const pr = {
+    repo: "example/demo", number: 101, title: "Add report exports", checks: "pass",
+    review_decision: "APPROVED", draft: false, url: "https://example.com/pull/101",
+    head_sha: "a".repeat(40), body: "Description fallback", changed_files: 0, files: [], image_urls: [],
+    review_result: {
+      version: 1, head_sha: "a".repeat(40), risk: "medium", outdated,
+      reviewer: "Primary reviewer", generated_at: "2026-11-07T12:00:00Z",
+      summary: { what_changed: "Add an export button.", why: "Save reports locally.", what_to_check: "Try an empty report." },
+      second_opinion: { reviewer: "Second reviewer", risk: "high", summary: "Check exported fields. <script>example</script>" },
+    },
+  };
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ owners: ["example"], all_owners: false, stacks: [{ repo: pr.repo, prs: [pr] }], notes: [], decision_enabled: false }))));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={client}><App /></QueryClientProvider>);
+  await userEvent.click(await screen.findByText(/Single PR/));
+  const heading = screen.getByRole("heading", { name: /#101 Add report exports/ });
+  const row = heading.closest("summary")!;
+  expect(row).toHaveTextContent("Risk: medium");
+  expect(row.textContent?.includes("Outdated result")).toBe(outdated);
+  expect(screen.getByText("Add an export button.")).not.toBeVisible();
+  await userEvent.click(heading);
+  for (const text of ["Add an export button.", "Save reports locally.", "Try an empty report.", "Second reviewer", "Risk: high", "Check exported fields. <script>example</script>"]) {
+    expect(screen.getByText(text)).toBeVisible();
+  }
+  expect(screen.queryByText(/the PR head has changed/) !== null).toBe(outdated);
+  expect(document.querySelector("section[aria-label='Review summary'] script")).toBeNull();
+  expect(screen.queryByText("Description fallback")).not.toBeVisible();
+  client.clear();
+});

@@ -126,7 +126,7 @@ It fills the page width, groups stacks by repository, and numbers PRs in merge o
 Stacks and PRs start collapsed for quick scanning: a stack row counts PRs with
 failing checks, requested changes, or pending checks, and each PR row shows check
 and review status, draft state, and any answer already sent. Expand a PR for a
-plain-text summary from its description, changed-file counts, GitHub screenshot
+plain-text summary from its description (or an optional local review result), changed-file counts, GitHub screenshot
 thumbnails, and links to the PR and diff; expand the description or file list for
 more detail. Per-PR and whole-stack Merge/Hold buttons send an
 optional note through the decision hook; they stay disabled without a command.
@@ -148,6 +148,16 @@ never join a stack through their head branch name. Summaries come from PR
 descriptions; screenshots load through `GET /api/inbox/image`, an authenticated
 GitHub-only endpoint for PR attachments and image files in the PR's own
 repository (including private ones). Private PR content stays in the local server.
+
+To show reviewer-written summaries and low/medium/high risk labels, opt into
+[`review.results_dir`](docs/review-results.md). Risk appears in the collapsed PR
+row; the expanded card shows what changed, why, what to check, reviewer, and
+generation time. An optional second opinion appears beside the first on wider
+screens and below it on phones, with its own risk and summary. A result for a
+different head SHA is labeled **Outdated result** in both views until an external
+producer replaces the file. Missing or invalid files leave the description
+summary available. Decky only reads these files; it does not produce reviews or
+send their contents to GitHub.
 
 ```toml
 [review]

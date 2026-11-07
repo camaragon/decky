@@ -107,6 +107,18 @@ export const putConfig = (key: string, value: string) =>
 export const deleteConfig = (key: string) =>
   api<{ message: string }>(`/api/config/${encodeURIComponent(key)}`, { method: "DELETE" });
 
+export type ReviewRisk = "low" | "medium" | "high";
+export type ReviewResult = {
+  version: 1;
+  head_sha: string;
+  risk: ReviewRisk;
+  summary: { what_changed: string; why: string; what_to_check: string };
+  reviewer: string;
+  generated_at: string;
+  second_opinion: { reviewer: string; risk: ReviewRisk; summary: string } | null;
+  outdated: boolean;
+};
+
 export type InboxPr = PrRow & {
   head_sha: string;
   body: string;
@@ -114,6 +126,7 @@ export type InboxPr = PrRow & {
   changed_files: number;
   files: { path: string; additions: number; deletions: number }[];
   image_urls: string[];
+  review_result?: ReviewResult;
 };
 export type InboxStack = { repo: string; prs: InboxPr[] };
 export type InboxResponse = { owners: string[]; all_owners: boolean; stacks: InboxStack[]; notes: string[]; decision_enabled: boolean };
