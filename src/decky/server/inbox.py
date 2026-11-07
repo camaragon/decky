@@ -176,6 +176,20 @@ def image_sources(url: str, repo: str) -> list[str]:
             for split in range(len(parts) - 1, offset, -1)]
 
 
+def raster_kind(content: bytes) -> str | None:
+    if content.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if content.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if content[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    if content[:4] == b"RIFF" and content[8:12] == b"WEBP":
+        return "image/webp"
+    if content[4:12] in (b"ftypavif", b"ftypavis"):
+        return "image/avif"
+    return None
+
+
 class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
@@ -216,13 +230,13 @@ def image(request: WebRequest, repo: str, number: int, url: str):
                     continue
                 raise
             with upstream:
-                kind = upstream.headers.get_content_type()
-                if kind not in {"image/png", "image/jpeg", "image/gif", "image/webp", "image/avif"}:
-                    raise HTTPException(415, "Unsupported image type")
                 content = upstream.read(10 * 1024 * 1024 + 1)
-                if len(content) > 10 * 1024 * 1024:
-                    raise HTTPException(413, "Image exceeds 10 MiB")
-                return Response(content, media_type=kind, headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
+                kind = raster_kind(content) if source != url else upstream.headers.get_content_type()
+            if kind not in {"image/png", "image/jpeg", "image/gif", "image/webp", "image/avif"}:
+                raise HTTPException(415, "Unsupported image type")
+            if len(content) > 10 * 1024 * 1024:
+                raise HTTPException(413, "Image exceeds 10 MiB")
+            return Response(content, media_type=kind, headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
     except (URLError, OSError):
         raise HTTPException(502, "Could not fetch GitHub image") from None
     raise HTTPException(502, "Too many image redirects")

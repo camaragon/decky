@@ -163,6 +163,9 @@ def test_proxy_host_only_reaches_inbox(setup, monkeypatch, tmp_path):
     assert local.post("/api/inbox/decision", json=answer).status_code == 200
 
 
+PNG = b"\x89PNG\r\n\x1a\n" + b"example-image"
+
+
 @pytest.mark.parametrize("prefix,suffix", [("https://github.com/", "/blob/"),
                                            ("https://github.com/", "/raw/"),
                                            ("https://raw.githubusercontent.com/", "/")])
@@ -177,8 +180,8 @@ def test_repository_image_uses_contents_api(setup, monkeypatch, prefix, suffix, 
     client.app.state.decky.inbox_rows = {(p["repo"], 1): p}
     monkeypatch.setattr(inbox.github, "run_gh", Mock(return_value=SimpleNamespace(returncode=0, stdout="example-token\n")))
     headers = Message()
-    headers["Content-Type"] = "image/png"
-    upstream = BytesIO(b"example-image")
+    headers["Content-Type"] = "application/vnd.github.raw; charset=utf-8"
+    upstream = BytesIO(PNG)
     upstream.headers = headers
     calls = []
 
@@ -194,7 +197,7 @@ def test_repository_image_uses_contents_api(setup, monkeypatch, prefix, suffix, 
     monkeypatch.setattr(inbox, "build_opener", lambda *args: SimpleNamespace(open=fetch))
     response = client.get("/api/inbox/image", params={"repo": p["repo"], "number": 1, "url": url})
     assert response.status_code == 200
-    assert response.content == b"example-image"
+    assert response.content == PNG
     assert response.headers["content-type"] == "image/png"
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["x-content-type-options"] == "nosniff"
@@ -219,9 +222,9 @@ def test_repository_image_refuses_other_repository(setup, monkeypatch, url):
     credentials.assert_not_called()
 
 
-@pytest.mark.parametrize("kind,size,status", [("image/svg+xml", 10, 415),
-                                             ("image/png", 10 * 1024 * 1024 + 1, 413)])
-def test_repository_image_preserves_raster_and_size_limits(setup, monkeypatch, kind, size, status):
+@pytest.mark.parametrize("body,status", [(b"<svg xmlns='http://www.w3.org/2000/svg'/>", 415),
+                                         (PNG.ljust(10 * 1024 * 1024 + 1, b"x"), 413)])
+def test_repository_image_preserves_raster_and_size_limits(setup, monkeypatch, body, status):
     _, client = setup
     p = row(1)
     url = f"https://github.com/{p['repo']}/blob/main/screen.png"
@@ -229,8 +232,29 @@ def test_repository_image_preserves_raster_and_size_limits(setup, monkeypatch, k
     client.app.state.decky.inbox_rows = {(p["repo"], 1): p}
     monkeypatch.setattr(inbox.github, "run_gh", Mock(return_value=SimpleNamespace(returncode=0, stdout="example-token")))
     headers = Message()
-    headers["Content-Type"] = kind
-    upstream = BytesIO(b"x" * size)
+    headers["Content-Type"] = "application/vnd.github.raw; charset=utf-8"
+    upstream = BytesIO(body)
     upstream.headers = headers
     monkeypatch.setattr(inbox, "build_opener", lambda *args: SimpleNamespace(open=lambda *args, **kwargs: upstream))
     assert client.get("/api/inbox/image", params={"repo": p["repo"], "number": 1, "url": url}).status_code == status
+
+
+@pytest.mark.parametrize("body,kind", [(b"\xff\xd8\xff\xe0example", "image/jpeg"),
+                                       (b"GIF89aexample", "image/gif"),
+                                       (b"RIFF\x00\x00\x00\x00WEBPexample", "image/webp"),
+                                       (b"\x00\x00\x00\x1cftypavifexample", "image/avif")])
+def test_repository_image_serves_detected_raster_type(setup, monkeypatch, body, kind):
+    _, client = setup
+    p = row(1)
+    url = f"https://raw.githubusercontent.com/{p['repo']}/main/screen.img"
+    p["image_urls"] = [url]
+    client.app.state.decky.inbox_rows = {(p["repo"], 1): p}
+    monkeypatch.setattr(inbox.github, "run_gh", Mock(return_value=SimpleNamespace(returncode=0, stdout="example-token")))
+    headers = Message()
+    headers["Content-Type"] = "application/vnd.github.raw; charset=utf-8"
+    upstream = BytesIO(body)
+    upstream.headers = headers
+    monkeypatch.setattr(inbox, "build_opener", lambda *args: SimpleNamespace(open=lambda *args, **kwargs: upstream))
+    response = client.get("/api/inbox/image", params={"repo": p["repo"], "number": 1, "url": url})
+    assert response.status_code == 200
+    assert response.headers["content-type"] == kind
