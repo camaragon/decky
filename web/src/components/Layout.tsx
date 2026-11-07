@@ -14,6 +14,7 @@ import { cn } from "../lib/utils";
 const links = [
   { to: "/", label: "Reviews" },
   { to: "/prs", label: "My PRs" },
+  { to: "/inbox", label: "Inbox" },
   { to: "/config", label: "Config" },
 ];
 
@@ -36,7 +37,7 @@ export function Layout({
   return (
     <div
       className={cn(
-        "grid min-h-screen bg-background",
+        "grid min-h-screen bg-background layout",
         collapsed ? "grid-cols-[3rem_1fr]" : "grid-cols-[14rem_1fr]",
       )}
     >
@@ -46,6 +47,7 @@ export function Layout({
           <ThemeToggle />
           <Button
             type="button"
+            aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
             variant="ghost"
             size="icon"
             className="shrink-0"
@@ -77,7 +79,7 @@ export function Layout({
               to={link.to}
               title={link.label}
               className={cn(
-                "rounded-md px-2 py-1.5 text-xs hover:bg-accent",
+                "min-h-11 flex items-center rounded-md px-2 py-1.5 text-xs hover:bg-accent",
                 location.pathname === link.to && "bg-accent font-semibold",
                 collapsed && "text-center px-1",
               )}

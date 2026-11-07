@@ -59,3 +59,19 @@
 body {
   @apply bg-background text-foreground antialiased text-sm;
 }
+
+.inbox { overflow-wrap: anywhere; }
+.inbox summary { min-height: 44px; padding-block: 10px; }
+.inbox a { display: inline-flex; align-items: center; min-height: 44px; text-decoration: underline; }
+.inbox textarea { font-size: 16px; }
+.inbox :focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+.check-pass { color: var(--color-green-700); }
+.check-fail { color: var(--color-red-700); }
+.check-pending { color: var(--color-amber-700); }
+@media (max-width: 640px) {
+  .layout { display: flex; flex-direction: column; }
+  .layout > aside { border-right: 0; border-bottom: 1px solid var(--border); }
+  .layout > aside button { min-width: 44px; min-height: 44px; }
+  .layout > aside nav { flex-direction: row; flex-wrap: wrap; }
+  .layout > main { padding: 12px; }
+}
