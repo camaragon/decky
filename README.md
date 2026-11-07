@@ -122,10 +122,13 @@ decky server --no-open --dev               # API only; use pnpm -C web dev for t
 ```
 
 The **Review inbox** at `/inbox` is a phone-friendly view of your open PRs.
-It groups stacks by repository and numbers PRs in merge order. Each PR shows check
-and review status, a plain-text summary from its description, changed-file counts,
-GitHub screenshot thumbnails, and links to the PR and diff. Expand the description
-or file list for more detail. Per-PR and whole-stack Merge/Hold buttons send an
+It fills the page width, groups stacks by repository, and numbers PRs in merge order.
+Stacks and PRs start collapsed for quick scanning: a stack row counts PRs with
+failing checks, requested changes, or pending checks, and each PR row shows check
+and review status, draft state, and any answer already sent. Expand a PR for a
+plain-text summary from its description, changed-file counts, GitHub screenshot
+thumbnails, and links to the PR and diff; expand the description or file list for
+more detail. Per-PR and whole-stack Merge/Hold buttons send an
 optional note through the decision hook; they stay disabled without a command.
 Delivery success or failure appears inline. Last answers stay in the browser tab
 for the session, keyed by PR commit. The inbox does not load dashboard buckets,

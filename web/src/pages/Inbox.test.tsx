@@ -33,3 +33,33 @@ it("says no PRs were found instead of the setup hint when all owners are searche
   expect(screen.queryByText(/Configure review.owners/)).not.toBeInTheDocument();
   client.clear();
 });
+
+it("starts stacks and PR details collapsed and expands them on click", async () => {
+  window.history.replaceState({}, "", "/inbox");
+  const pr = { repo: "example/demo", number: 101, title: "Improve navigation", checks: "fail", review_decision: "CHANGES_REQUESTED", draft: true, url: "https://example.com/pull/101", head_sha: "demo", body: "Example description", changed_files: 0, files: [], image_urls: [] };
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ owners: ["example"], all_owners: false, stacks: [{ repo: pr.repo, prs: [pr, { ...pr, number: 102, title: "Update copy", checks: "pass", review_decision: "APPROVED", draft: false }] }], notes: [], decision_enabled: true }))));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={client}><App /></QueryClientProvider>);
+  const stackSummary = await screen.findByText(/2 PR stack/);
+  const stack = stackSummary.closest("details")!;
+  const heading = screen.getByRole("heading", { name: /#101 Improve navigation/, hidden: true });
+  const details = heading.closest("details")!;
+  const secondDetails = screen.getByRole("heading", { name: /#102 Update copy/, hidden: true }).closest("details")!;
+  expect(stack).not.toHaveAttribute("open");
+  expect(details).not.toHaveAttribute("open");
+  expect(secondDetails).not.toHaveAttribute("open");
+  await userEvent.click(stackSummary);
+  expect(stack).toHaveAttribute("open");
+  expect(details).not.toHaveAttribute("open");
+  const row = heading.closest("summary")!;
+  expect(row).toHaveTextContent("Checks: fail");
+  expect(row).toHaveTextContent("CHANGES REQUESTED");
+  expect(row).toHaveTextContent("Draft");
+  await userEvent.click(heading);
+  expect(details).toHaveAttribute("open");
+  expect(screen.getByRole("textbox", { name: "Optional note for PR #101" })).toBeVisible();
+  expect(secondDetails).not.toHaveAttribute("open");
+  await userEvent.click(heading);
+  expect(details).not.toHaveAttribute("open");
+  client.clear();
+});
