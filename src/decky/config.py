@@ -71,6 +71,8 @@ SETTINGS: dict[str, Setting] = {
             kind="list_str",
         ),
         Setting("review.owners", "DECKY_REVIEW_OWNERS", "Owners for the authored review inbox", "[]", kind="list_str"),
+        Setting("review.all_owners", "DECKY_REVIEW_ALL_OWNERS", "Include authored open PRs across all owners", "false", kind="bool"),
+        Setting("review.exclude_owners", "DECKY_REVIEW_EXCLUDE_OWNERS", "Owners excluded when review.all_owners is enabled", "[]", kind="list_str"),
         Setting("review.decision_command", "DECKY_REVIEW_DECISION_COMMAND", "Argv receiving review answers as JSON on stdin", "[]", kind="list_str"),
         Setting(
             "review.command",
@@ -338,8 +340,11 @@ dir = "~/prs"
 # watch_owners = ["example-org", "example-user"]
 
 [review]
-# Inbox queries only these owners; empty means no GitHub queries.
+# With all_owners false, query only these owners; empty means no GitHub queries.
 # owners = ["example-org", "example-user"]
+# all_owners = false
+# When all_owners is true, exclude these owners before fetching PR details.
+# exclude_owners = ["example-org"]
 # decision_command = ["/path/to/decision-hook", "--stdin"]
 # Required before `decky pr review` or Enter in the list.
 # Placeholders: {slug} {owner} {repo} {number} {url} {cwd}

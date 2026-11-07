@@ -4,7 +4,7 @@ from email.message import Message
 from io import BytesIO
 from urllib.error import HTTPError
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 import click
 import pytest
@@ -34,7 +34,7 @@ def test_scoped_queries_and_no_owners(setup, monkeypatch):
     settings["review.owners"] = []
     assert client.get("/api/inbox").json()["stacks"] == []
     query.assert_not_called()
-    settings["review.owners"] = ["example-org", "example-user"]
+    settings.update({"review.owners": ["example-org", "example-user"], "review.all_owners": False, "review.exclude_owners": ["example-org"]})
     assert client.get("/api/inbox").status_code == 200
     assert query.call_count == 2
     for call, owner in zip(query.call_args_list, settings["review.owners"]):
@@ -258,3 +258,100 @@ def test_repository_image_serves_detected_raster_type(setup, monkeypatch, body, 
     response = client.get("/api/inbox/image", params={"repo": p["repo"], "number": 1, "url": url})
     assert response.status_code == 200
     assert response.headers["content-type"] == kind
+
+
+def test_all_owners_search_excludes_before_details_and_paginates(setup, monkeypatch):
+    settings, client = setup
+    settings.update({"review.all_owners": True, "review.exclude_owners": ["EXAMPLE-ORG", "example-excluded"]})
+    query = Mock(side_effect=[
+        {"data": {"search": {"nodes": [
+            {"number": 9, "repository": {"nameWithOwner": "Example-Org/example-repo"}},
+            {"number": 1, "repository": {"nameWithOwner": "example-user/example-repo"}},
+        ], "pageInfo": {"hasNextPage": True, "endCursor": "next-page"}}}},
+        {"data": {"search": {"nodes": [
+            {"number": 2, "repository": {"nameWithOwner": "example-user/example-repo"}},
+            {"number": 3, "repository": {"nameWithOwner": "example-other/example-repo"}},
+        ], "pageInfo": {"hasNextPage": False}}}},
+    ])
+    monkeypatch.setattr(inbox.github, "_gh_json", query)
+    details = Mock(side_effect=lambda repo, number: (row(number, "branch-1" if number == 2 else "main", repo=repo), []))
+    monkeypatch.setattr(inbox.github, "load_pr", details)
+    response = client.get("/api/inbox")
+    assert response.status_code == 200
+    assert [[p["number"] for p in s["prs"]] for s in response.json()["stacks"]] == [[3], [1, 2]]
+    assert query.call_count == 2
+    for call in query.call_args_list:
+        assert "q=is:pr is:open author:@me -user:example-org -user:example-excluded" in call.args
+    assert "cursor=next-page" in query.call_args_list[1].args
+    assert details.call_args_list == [
+        call("example-user/example-repo", 1),
+        call("example-user/example-repo", 2),
+        call("example-other/example-repo", 3),
+    ]
+
+
+def test_all_owners_without_configured_owners_uses_one_search(setup, monkeypatch):
+    settings, client = setup
+    settings.update({"review.owners": [], "review.all_owners": True})
+    query = Mock(return_value={"data": {"search": {"nodes": [], "pageInfo": {"hasNextPage": False}}}})
+    monkeypatch.setattr(inbox.github, "_gh_json", query)
+    assert client.get("/api/inbox").status_code == 200
+    query.assert_called_once()
+    assert "q=is:pr is:open author:@me" in query.call_args.args
+
+
+def test_all_owners_decision_authorization(setup, monkeypatch):
+    settings, client = setup
+    settings.update({"review.all_owners": True, "review.exclude_owners": ["EXAMPLE-ORG"]})
+    p = row(1, repo="example-user/example-repo")
+    query = Mock(return_value={"data": {"search": {"nodes": [
+        {"number": 1, "repository": {"nameWithOwner": p["repo"]}},
+    ], "pageInfo": {"hasNextPage": False}}}})
+    monkeypatch.setattr(inbox.github, "_gh_json", query)
+    details = Mock(return_value=(p, []))
+    monkeypatch.setattr(inbox.github, "load_pr", details)
+    command = Mock(return_value=SimpleNamespace(returncode=0))
+    monkeypatch.setattr(inbox, "run_command", command)
+    answer = {"repo": p["repo"], "numbers": [1], "head_shas": ["sha-1"], "scope": "pr", "decision": "hold"}
+    assert client.post("/api/inbox/decision", json=answer).status_code == 200
+    assert "q=is:pr is:open author:@me -user:example-org repo:example-user/example-repo" in query.call_args.args
+    assert client.post("/api/inbox/decision", json={**answer, "repo": "example-org/example-repo"}).status_code == 403
+    query.assert_called_once()
+    details.assert_called_once()
+    command.assert_called_once()
+
+
+@pytest.mark.parametrize("all_owners,owner,status", [
+    (True, "example-user", 200), (True, "Example-Org", 403),
+    (False, "example-user", 403), (False, "example-org", 200),
+])
+def test_image_owner_authorization(setup, monkeypatch, all_owners, owner, status):
+    settings, client = setup
+    settings.update({"review.all_owners": all_owners, "review.exclude_owners": ["example-org"]})
+    p = row(1, repo=f"{owner}/example-repo")
+    url = "https://github.com/allowed.png"
+    p["image_urls"] = [url]
+    client.app.state.decky.inbox_rows = {(p["repo"], 1): p}
+    credentials = Mock(return_value=SimpleNamespace(returncode=0, stdout="example-token"))
+    monkeypatch.setattr(inbox.github, "run_gh", credentials)
+    upstream = Mock()
+    upstream.headers.get_content_type.return_value = "image/png"
+    upstream.read.return_value = b"example-image"
+    upstream.__enter__ = Mock(return_value=upstream)
+    upstream.__exit__ = Mock(return_value=False)
+    opener = Mock()
+    opener.open.return_value = upstream
+    monkeypatch.setattr(inbox, "build_opener", Mock(return_value=opener))
+    response = client.get("/api/inbox/image", params={"repo": p["repo"], "number": 1, "url": url})
+    assert response.status_code == status
+    assert credentials.call_count == (1 if status == 200 else 0)
+    assert opener.open.call_count == (1 if status == 200 else 0)
+
+
+def test_invalid_exclusion_rejected_before_search(setup, monkeypatch):
+    settings, client = setup
+    settings.update({"review.all_owners": True, "review.exclude_owners": ["example-org author:someone"]})
+    query = Mock()
+    monkeypatch.setattr(inbox.github, "_gh_json", query)
+    assert client.get("/api/inbox").status_code == 422
+    query.assert_not_called()
