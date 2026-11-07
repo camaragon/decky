@@ -295,7 +295,9 @@ def test_all_owners_without_configured_owners_uses_one_search(setup, monkeypatch
     settings.update({"review.owners": [], "review.all_owners": True})
     query = Mock(return_value={"data": {"search": {"nodes": [], "pageInfo": {"hasNextPage": False}}}})
     monkeypatch.setattr(inbox.github, "_gh_json", query)
-    assert client.get("/api/inbox").status_code == 200
+    response = client.get("/api/inbox")
+    assert response.status_code == 200
+    assert response.json()["all_owners"] is True
     query.assert_called_once()
     assert "q=is:pr is:open author:@me" in query.call_args.args
 
