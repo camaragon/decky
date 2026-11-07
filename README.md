@@ -121,6 +121,50 @@ decky server
 decky server --no-open --dev               # API only; use pnpm -C web dev for the SPA
 ```
 
+The review inbox API (`GET /api/inbox`) lists your authored open PRs only in
+configured `review.owners` (GitHub search: `author:@me user:OWNER` per owner). An
+empty owner list makes no inbox GitHub requests. Stacks follow same-repository
+base/head branch dependencies in merge order, grouped by repository; fork PRs
+never join a stack through their head branch name. Summaries come from PR
+descriptions; screenshots load through `GET /api/inbox/image`, an authenticated
+GitHub-only attachment endpoint. Private PR content stays in the local server.
+
+```toml
+[review]
+owners = ["example-org", "example-user"]
+decision_command = ["/path/to/decision-hook", "--stdin"]
+```
+
+`review.decision_command` (or `DECKY_REVIEW_DECISION_COMMAND`, a JSON string array)
+is an argv list executed without a shell. `POST /api/inbox/decision` sends one JSON
+object on stdin:
+`{"version":1,"decision":"hold","scope":"stack","repo":"example-org/example-repo","prs":[{"number":1,"url":"https://github.com/example-org/example-repo/pull/1","head_sha":"abc123"}],"note":"Please explain the migration"}`.
+PRs are in merge order. The command has 30 seconds to exit successfully; failures
+return an error message. A timeout may have delivered the answer, so check the
+recipient before retrying. Without a command the endpoint returns 409. Decky does
+not merge or approve PRs.
+
+For phone access, run behind an authenticated reverse proxy; never expose the
+unauthenticated server directly. Keep the default loopback bind and serve the SPA
+at `/`. Configure exact proxy hostnames (without scheme, port, or wildcards):
+
+```toml
+[server]
+allowed_hosts = ["review.example.com"]
+```
+
+`DECKY_SERVER_ALLOWED_HOSTS` also accepts a JSON array or comma-separated names.
+Restart the server after changing allowed hosts; an invalid entry stops the server
+from starting. Requests through an allowed host may only load the SPA and static
+assets, `GET /api/inbox`, `GET /api/inbox/image`, and `POST /api/inbox/decision`.
+Every other API route (config reads and writes, review launch, opening URLs,
+queue, status) and `/mcp` return 403 for those requests; loopback access is
+unchanged. The proxy must preserve the incoming public Host header (for nginx,
+`proxy_set_header Host $host;`). A proxy that rewrites Host to the loopback
+upstream (such as nginx's default `Host: 127.0.0.1:8777`) grants every proxied
+request unrestricted local access. Host filtering is not authentication: everyone
+able to reach the proxy can read inbox PR content and send merge/hold answers.
+
 Optional `status.command` prints JSON with `waiting` and `running` lists (`title` and `url` per item) for the waiting strip.
 
 Connect an MCP client:

@@ -14,12 +14,18 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from decky.server.api import ActionFailed, State, allowed_host, router
+from decky import config
+from decky.server.api import ActionFailed, State, allowed_hosts, local_host, proxy_host, router
 from decky.server import mcp as mcp_mod
 
 log = logging.getLogger(__name__)
 
 STATIC = Path(__file__).parent / "static"
+PROXY_ROUTES = {
+    ("GET", "/api/inbox"),
+    ("GET", "/api/inbox/image"),
+    ("POST", "/api/inbox/decision"),
+}
 MISSING = "the web app is not built; run `pnpm -C web install && pnpm -C web build`"
 
 
@@ -30,6 +36,7 @@ def create_app(
 ) -> FastAPI:
     """Build the decky server app including /mcp tools."""
     decky_state = state or State(listen_host=host)
+    decky_state.allowed_hosts = allowed_hosts(config.resolve("server.allowed_hosts")[0] or [])
     tools = mcp_mod.build(decky_state)
 
     @asynccontextmanager
@@ -49,9 +56,18 @@ def create_app(
     @app.middleware("http")
     async def validate_api_host(request: Request, call_next):
         path = request.url.path
-        if (path == "/api" or path.startswith("/api/")) and not allowed_host(request):
-            return JSONResponse({"message": "host not allowed"}, status_code=421)
-        return await call_next(request)
+        api = path == "/api" or path.startswith("/api/")
+        if local_host(request):
+            return await call_next(request)
+        if not proxy_host(request):
+            if api:
+                return JSONResponse({"message": "host not allowed"}, status_code=421)
+            return await call_next(request)
+        if (request.method, path) in PROXY_ROUTES or (
+            request.method in {"GET", "HEAD"} and not api and not path.startswith("/mcp")
+        ):
+            return await call_next(request)
+        return JSONResponse({"message": "not available through a proxy host"}, status_code=403)
 
     @app.exception_handler(click.ClickException)
     @app.exception_handler(ActionFailed)
@@ -74,6 +90,8 @@ def create_app(
         )
         return JSONResponse({"message": problems or "bad input"}, status_code=400)
 
+    from decky.server.inbox import router as inbox_router
+    app.include_router(inbox_router)
     app.include_router(router)
     app.router.routes.extend(mcp_mod.routes(tools, host))
 

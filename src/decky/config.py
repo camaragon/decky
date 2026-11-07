@@ -70,6 +70,8 @@ SETTINGS: dict[str, Setting] = {
             "[]",
             kind="list_str",
         ),
+        Setting("review.owners", "DECKY_REVIEW_OWNERS", "Owners for the authored review inbox", "[]", kind="list_str"),
+        Setting("review.decision_command", "DECKY_REVIEW_DECISION_COMMAND", "Argv receiving review answers as JSON on stdin", "[]", kind="list_str"),
         Setting(
             "review.command",
             "DECKY_REVIEW_COMMAND",
@@ -104,6 +106,7 @@ SETTINGS: dict[str, Setting] = {
             "DECKY_STATUS_COMMAND",
             "Argv command that prints waiting/running JSON (optional)",
         ),
+        Setting("server.allowed_hosts", "DECKY_SERVER_ALLOWED_HOSTS", "Extra exact hostnames accepted behind an authenticated proxy", "[]", kind="list_str"),
         Setting(
             "server.host",
             "DECKY_SERVER_HOST",
@@ -335,6 +338,9 @@ dir = "~/prs"
 # watch_owners = ["example-org", "example-user"]
 
 [review]
+# Inbox queries only these owners; empty means no GitHub queries.
+# owners = ["example-org", "example-user"]
+# decision_command = ["/path/to/decision-hook", "--stdin"]
 # Required before `decky pr review` or Enter in the list.
 # Placeholders: {slug} {owner} {repo} {number} {url} {cwd}
 command = "your-review-agent {url}"
@@ -356,6 +362,7 @@ command = "open -a Dia {url}"
 
 # [server]
 # host = "127.0.0.1"
+# allowed_hosts = ["review.example.com"]
 # port = "8777"
 # log_level = "warning"
 
