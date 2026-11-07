@@ -162,8 +162,8 @@ queue, status) and `/mcp` return 403 for those requests; loopback access is
 unchanged. The proxy must preserve the incoming public Host header (for nginx,
 `proxy_set_header Host $host;`). A proxy that rewrites Host to the loopback
 upstream (such as nginx's default `Host: 127.0.0.1:8777`) grants every proxied
-request unrestricted local access. Host filtering is not authentication: everyone able to reach the
-proxy can read inbox PR content and send merge/hold answers.
+request unrestricted local access. Host filtering is not authentication: everyone
+able to reach the proxy can read inbox PR content and send merge/hold answers.
 
 Optional `status.command` prints JSON with `waiting` and `running` lists (`title` and `url` per item) for the waiting strip.
 
