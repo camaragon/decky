@@ -29,6 +29,8 @@ class ActionFailed(Exception):
 class State:
     lock: threading.RLock = field(default_factory=threading.RLock)
     listen_host: str = "127.0.0.1"
+    inbox_rows: dict = field(default_factory=dict)
+    allowed_hosts: list[str] = field(default_factory=list)
 
     def save_setting(self, key: str, value: str, *, unset: bool = False) -> str:
         """Serialize read-modify-write operations within this server instance."""
@@ -77,7 +79,12 @@ def allowed_host(request: Request) -> bool:
     if not host_header:
         return False
     listen = _normalize_host(state(request).listen_host)
-    return _normalize_host(host_header) in {listen, "localhost", "127.0.0.1", "::1"}
+    allowed = {listen, "localhost", "127.0.0.1", "::1"}
+    for extra in state(request).allowed_hosts:
+        if not extra or any(c.isspace() or c in "/\\?#@,:*" for c in extra):
+            raise click.ClickException("server.allowed_hosts must contain exact hostnames without ports")
+        allowed.add(_normalize_host(extra))
+    return _normalize_host(host_header) in allowed
 
 
 def _configured(key: str) -> bool:

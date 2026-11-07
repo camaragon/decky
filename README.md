@@ -121,6 +121,39 @@ decky server
 decky server --no-open --dev               # API only; use pnpm -C web dev for the SPA
 ```
 
+The **Review inbox** at `/inbox` lists your authored open PRs only in configured
+`review.owners` (GitHub search: `author:@me user:OWNER` per owner). An empty owner list makes no inbox GitHub requests. Stacks follow
+base/head branch dependencies in merge order, grouped by repository. Summaries
+come from PR descriptions; screenshots load through an authenticated GitHub-only
+attachment endpoint. Private PR content stays in the local server and browser.
+
+```toml
+[review]
+owners = ["example-org", "example-user"]
+decision_command = ["/path/to/decision-hook", "--stdin"]
+```
+
+`review.decision_command` (or `DECKY_REVIEW_DECISION_COMMAND`, a JSON string array)
+is an argv list executed without a shell. Merge/Hold sends one JSON object on stdin:
+`{"version":1,"decision":"hold","scope":"stack","repo":"example-org/example-repo","prs":[{"number":1,"url":"https://github.com/example-org/example-repo/pull/1","head_sha":"abc123"}],"note":"Please explain the migration"}`.
+PRs are in merge order. The command has 30 seconds to exit successfully; failures
+appear on the page. A timeout may have delivered the answer, so check the recipient
+before retrying. Decky does not merge or approve PRs. Buttons stay disabled without
+a command. Last answers remain in the browser tab for the session, keyed by commit.
+
+For phone access, run behind an authenticated reverse proxy; never expose the
+unauthenticated server directly. Keep the default loopback bind and serve the SPA
+at `/`. Configure exact proxy hostnames (without scheme, port, or wildcards):
+
+```toml
+[server]
+allowed_hosts = ["review.example.com"]
+```
+
+`DECKY_SERVER_ALLOWED_HOSTS` also accepts a JSON array or comma-separated names.
+Restart the server after changing allowed hosts. Host filtering is not authentication. Everyone able to reach the server can read
+PR content, edit config, and run configured actions.
+
 Optional `status.command` prints JSON with `waiting` and `running` lists (`title` and `url` per item) for the waiting strip.
 
 Connect an MCP client:

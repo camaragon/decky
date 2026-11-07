@@ -14,6 +14,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from decky import config
 from decky.server.api import ActionFailed, State, allowed_host, router
 from decky.server import mcp as mcp_mod
 
@@ -30,6 +31,7 @@ def create_app(
 ) -> FastAPI:
     """Build the decky server app including /mcp tools."""
     decky_state = state or State(listen_host=host)
+    decky_state.allowed_hosts = config.resolve("server.allowed_hosts")[0] or []
     tools = mcp_mod.build(decky_state)
 
     @asynccontextmanager
@@ -74,6 +76,8 @@ def create_app(
         )
         return JSONResponse({"message": problems or "bad input"}, status_code=400)
 
+    from decky.server.inbox import router as inbox_router
+    app.include_router(inbox_router)
     app.include_router(router)
     app.router.routes.extend(mcp_mod.routes(tools, host))
 
