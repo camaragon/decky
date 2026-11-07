@@ -139,8 +139,7 @@ across all owners and repositories instead. `review.exclude_owners` (default `[]
 excludes owners in this mode, both in the search query (`-user:OWNER`) and before
 fetching PR details. Owner names are case-insensitive. The environment equivalents
 are `DECKY_REVIEW_ALL_OWNERS` and `DECKY_REVIEW_EXCLUDE_OWNERS` (a JSON string array).
-Stacks follow same-repository
-base/head branch dependencies in merge order, grouped by repository; fork PRs
+Stacks follow same-repository base/head branch dependencies in merge order, grouped by repository; fork PRs
 never join a stack through their head branch name. Summaries come from PR
 descriptions; screenshots load through `GET /api/inbox/image`, an authenticated
 GitHub-only endpoint for PR attachments and image files in the PR's own
