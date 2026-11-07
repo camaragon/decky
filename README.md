@@ -144,7 +144,7 @@ fetching PR details. Owner names are case-insensitive. The environment equivalen
 are `DECKY_REVIEW_ALL_OWNERS` and `DECKY_REVIEW_EXCLUDE_OWNERS` (a JSON string array).
 Stacks follow same-repository
 base/head branch dependencies in merge order, grouped by repository; fork PRs
-never join a stack through their head branch name. Summaries come from PR
+never join a stack through their head branch name. Default summaries come from PR
 descriptions; screenshots load through `GET /api/inbox/image`, an authenticated
 GitHub-only endpoint for PR attachments and image files in the PR's own
 repository (including private ones). Private PR content stays in the local server.
