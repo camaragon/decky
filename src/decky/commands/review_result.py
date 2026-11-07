@@ -16,8 +16,10 @@ from decky.process import run_command
 from decky.server.review_results import MAX_BYTES, ReviewResult, SecondOpinion, Summary, load
 
 SENSITIVE = (
-    r"auth|credential|secret|password|token|billing|payment|invoice|migrat|"
-    r"data[\s_/-]*rewrit|backfill|send|sending|approval|approv|permission|codeowners"
+    r"auth(?:entication|orization)?|credentials?|secrets?|passwords?|tokens?|"
+    r"billing|payments?|invoices?|migrat(?:e|ed|ing|ions?)|"
+    r"data[\s_/-]*rewrit(?:e|es|ing|ten)|backfills?|send(?:s|ing)?|"
+    r"approv(?:als?|e[ds]?|ing)|permissions?|codeowners"
 )
 
 
@@ -80,10 +82,14 @@ def write(repo, number, force):
     if diff.returncode:
         raise click.ClickException("could not fetch PR diff")
     try:
-        patterns = re.compile("|".join([SENSITIVE, *setting("sensitive_patterns")]), re.I)
+        # Path separators, including underscores, delimit sensitive words.
+        patterns = re.compile(
+            r"(?<![a-z0-9])(?:" + "|".join([SENSITIVE, *setting("sensitive_patterns")]) + r")(?![a-z0-9])",
+            re.I,
+        )
     except re.error:
         raise click.ClickException("review.sensitive_patterns: invalid regex") from None
-    text = "\n".join([row["title"], row["body"], *(f["path"] for f in row["files"]), diff.stdout])
+    text = "\n".join([row["title"], *(f["path"] for f in row["files"])])
     diff_bytes = diff.stdout.encode("utf-8")
     limit = setting("max_diff_bytes")
     truncated = len(diff_bytes) > limit

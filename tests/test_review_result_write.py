@@ -118,3 +118,15 @@ def test_bad_regeneration_preserves_existing_result(writer, tmp_path):
     assert run(force=True).exit_code == 1
     assert path.read_bytes() == original
     assert list(path.parent.iterdir()) == [path]
+
+
+def test_ordinary_words_in_pr_body_and_diff_do_not_flag_small_change(writer, tmp_path, monkeypatch):
+    run, settings, row, _ = writer
+    row.update(title="Refresh author page favicon", body="Send for permission and approval.")
+    row["files"][0]["path"] = "web/author/favicon.svg"
+    monkeypatch.setattr(github, "run_gh", lambda *args: subprocess.CompletedProcess(
+        args, 0, '+<svg aria-label="send permission"/>\n', ""))
+    result = run()
+    assert result.exit_code == 0, result.output
+    assert load(settings["results_dir"], "example/demo", 1, SHA)["second_opinion"] is None
+    assert not (tmp_path / "second").exists()

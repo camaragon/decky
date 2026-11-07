@@ -65,7 +65,9 @@ to empty and must be configured before use. Each setting also supports its
 Extra `sensitive_patterns` are case-insensitive regular expressions added to the
 defaults. Defaults match auth, credentials/secrets/passwords/tokens, billing/payments,
 migrations, data rewrites/backfills, sending, approvals/permissions, and CODEOWNERS
-in paths, title, body, or diff. These heuristics can flag harmless text too.
+only in changed file paths and the PR title, at word boundaries (including
+underscore separators). PR bodies and diff text do not trigger sensitive-area
+matching. These heuristics can flag harmless paths or titles too.
 At or above `large_diff_lines`, or when context is truncated, a second opinion is
 also required. A flagged PR fails without `second_reviewer_command` configured.
 Only `max_diff_bytes` of diff and 20,000 body characters enter the prompt;
