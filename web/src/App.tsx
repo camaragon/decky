@@ -33,10 +33,10 @@ function Hotkeys() {
 
 function Shell() {
   const isInbox = useLocation().pathname === "/inbox";
-  const meta = useQuery({ queryKey: ["meta"], queryFn: fetchMeta });
+  const meta = useQuery({ queryKey: ["meta"], queryFn: fetchMeta, enabled: !isInbox });
   const useQueueSource = Boolean(meta.data?.queueConfigured);
   const queue = useQueue(useQueueSource && !isInbox);
-  const config = useConfig();
+  const config = useConfig(!isInbox);
   const review = useTable("review", !useQueueSource && !isInbox);
   const team = useTable("team", !useQueueSource && !isInbox);
   const mine = useTable("mine", !useQueueSource && !isInbox);

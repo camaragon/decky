@@ -121,6 +121,16 @@ decky server
 decky server --no-open --dev               # API only; use pnpm -C web dev for the SPA
 ```
 
+The **Review inbox** at `/inbox` is a phone-friendly view of your open PRs.
+It groups stacks by repository and numbers PRs in merge order. Each PR shows check
+and review status, a plain-text summary from its description, changed-file counts,
+GitHub screenshot thumbnails, and links to the PR and diff. Expand the description
+or file list for more detail. Per-PR and whole-stack Merge/Hold buttons send an
+optional note through the decision hook; they stay disabled without a command.
+Delivery success or failure appears inline. Last answers stay in the browser tab
+for the session, keyed by PR commit. The inbox does not load dashboard buckets,
+configuration, queue, or status APIs, so it also works through the restricted proxy.
+
 The review inbox API (`GET /api/inbox`) lists your authored open PRs only in
 configured `review.owners` (GitHub search: `author:@me user:OWNER` per owner). An
 empty owner list makes no inbox GitHub requests. Stacks follow same-repository

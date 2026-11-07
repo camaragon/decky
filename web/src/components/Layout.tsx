@@ -28,10 +28,11 @@ export function Layout({
   children: ReactNode;
 }) {
   const location = useLocation();
+  const isInbox = location.pathname === "/inbox";
   const collapsed = localStorage.getItem("decky.sidebar") === "collapsed";
   const counts: Record<string, number> = { "/": reviewCount, "/prs": mineCount };
-  const meta = useQuery({ queryKey: ["meta"], queryFn: fetchMeta });
-  const status = useStatus(Boolean(meta.data?.statusConfigured));
+  const meta = useQuery({ queryKey: ["meta"], queryFn: fetchMeta, enabled: !isInbox });
+  const status = useStatus(!isInbox && Boolean(meta.data?.statusConfigured));
   const statusPayload = status.data && !status.data.disabled ? status.data : null;
 
   return (
@@ -60,11 +61,11 @@ export function Layout({
             {collapsed ? "»" : "«"}
           </Button>
         </div>
-        {!collapsed ? <QueryFeedback label="settings" query={meta} /> : null}
-        {!collapsed && meta.data?.statusConfigured ? (
+        {!isInbox && !collapsed ? <QueryFeedback label="settings" query={meta} /> : null}
+        {!isInbox && !collapsed && meta.data?.statusConfigured ? (
           <QueryFeedback label="status" query={status} />
         ) : null}
-        {!collapsed && statusPayload ? (
+        {!isInbox && !collapsed && statusPayload ? (
           <StatusSidebar
             waiting={statusPayload.waiting}
             running={statusPayload.running}
