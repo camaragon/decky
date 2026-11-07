@@ -149,7 +149,9 @@ decision_command = ["/path/to/decision-hook", "--stdin"]
 is an argv list executed without a shell. `POST /api/inbox/decision` sends one JSON
 object on stdin:
 `{"version":1,"decision":"hold","scope":"stack","repo":"example-org/example-repo","prs":[{"number":1,"url":"https://github.com/example-org/example-repo/pull/1","head_sha":"abc123"}],"note":"Please explain the migration"}`.
-PRs are in merge order. The command has 30 seconds to exit successfully; failures
+PRs are in merge order. Before running the command, Decky re-queries only the
+answer's repository: owners outside `review.owners` get 403, and a changed stack
+or head commit gets 409 (refresh and review again). The command has 30 seconds to exit successfully; failures
 return an error message. A timeout may have delivered the answer, so check the
 recipient before retrying. Without a command the endpoint returns 409. Decky does
 not merge or approve PRs.
