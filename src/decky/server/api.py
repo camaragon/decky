@@ -30,7 +30,7 @@ class State:
     lock: threading.RLock = field(default_factory=threading.RLock)
     listen_host: str = "127.0.0.1"
     inbox_rows: dict = field(default_factory=dict)
-    allowed_hosts: list[str] = field(default_factory=list)
+    allowed_hosts: set[str] = field(default_factory=set)
 
     def save_setting(self, key: str, value: str, *, unset: bool = False) -> str:
         """Serialize read-modify-write operations within this server instance."""
@@ -52,17 +52,24 @@ def _normalize_host(host: str) -> str:
         return host.lower()
 
 
-def allowed_host(request: Request) -> bool:
+def allowed_hosts(values: list[str]) -> set[str]:
+    if any(not v or any(c.isspace() or c in "/\\?#@,:*" for c in v) for v in values):
+        raise click.ClickException("server.allowed_hosts must contain exact hostnames without ports")
+    return {_normalize_host(v) for v in values}
+
+
+def request_host(request: Request) -> str | None:
+    """Return the normalized Host header name, or None when it is malformed."""
     headers = request.headers.getlist("host")
     if len(headers) != 1:
-        return False
+        return None
     authority = headers[0]
     if (
         not authority
         or authority.endswith(":")
         or any(c.isspace() or c in "/\\?#@," for c in authority)
     ):
-        return False
+        return None
     try:
         parsed = urlsplit(f"//{authority}")
         host_header = parsed.hostname
@@ -71,20 +78,22 @@ def allowed_host(request: Request) -> bool:
         if authority.startswith("["):
             suffix = authority.partition("]")[2]
             if suffix and not suffix.startswith(":"):
-                return False
+                return None
         elif authority.count(":") > 1:
-            return False
+            return None
     except ValueError:
-        return False
-    if not host_header:
-        return False
+        return None
+    return _normalize_host(host_header) if host_header else None
+
+
+def local_host(request: Request) -> bool:
     listen = _normalize_host(state(request).listen_host)
-    allowed = {listen, "localhost", "127.0.0.1", "::1"}
-    for extra in state(request).allowed_hosts:
-        if not extra or any(c.isspace() or c in "/\\?#@,:*" for c in extra):
-            raise click.ClickException("server.allowed_hosts must contain exact hostnames without ports")
-        allowed.add(_normalize_host(extra))
-    return _normalize_host(host_header) in allowed
+    return request_host(request) in {listen, "localhost", "127.0.0.1", "::1"}
+
+
+def proxy_host(request: Request) -> bool:
+    host = request_host(request)
+    return host is not None and host in state(request).allowed_hosts
 
 
 def _configured(key: str) -> bool:

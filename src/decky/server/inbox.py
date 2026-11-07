@@ -32,8 +32,9 @@ def stacks(rows: list[dict]) -> list[dict]:
     result = []
     for repo in sorted({r["repo"] for r in rows}):
         remaining = {r["number"]: r for r in rows if r["repo"] == repo}
-        heads = {r["head_branch"]: r["number"] for r in remaining.values()}
+        heads = {r["head_branch"]: r["number"] for r in remaining.values() if not r["cross_repository"]}
         parents = {n: heads.get(r["base_branch"]) for n, r in remaining.items()}
+        parents = {n: None if p == n else p for n, p in parents.items()}
         while remaining:
             root = min(remaining)
             seen = set()

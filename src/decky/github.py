@@ -217,7 +217,7 @@ def load_pr(slug: str, number: int) -> tuple[dict[str, Any], list[str]]:
         + """
 query($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {
-    pullRequest(number: $number) { ...PrFields changedFiles headRefOid headRefName baseRefName }
+    pullRequest(number: $number) { ...PrFields changedFiles headRefOid headRefName baseRefName isCrossRepository }
   }
 }
 """
@@ -238,7 +238,8 @@ query($owner: String!, $repo: String!, $number: Int!) {
     if not node:
         raise click.ClickException("pull request not found or inaccessible")
     row = pr_from_node(node, details=True)
-    row.update(head_sha=node["headRefOid"], head_branch=node.get("headRefName", ""), base_branch=node.get("baseRefName", ""))
+    row.update(head_sha=node["headRefOid"], head_branch=node.get("headRefName", ""), base_branch=node.get("baseRefName", ""),
+               cross_repository=bool(node.get("isCrossRepository")))
     notes: list[str] = []
     if row.pop("review_requests_truncated", False):
         _add_note(notes, "review requests truncated at 20")

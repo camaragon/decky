@@ -121,11 +121,13 @@ decky server
 decky server --no-open --dev               # API only; use pnpm -C web dev for the SPA
 ```
 
-The **Review inbox** at `/inbox` lists your authored open PRs only in configured
-`review.owners` (GitHub search: `author:@me user:OWNER` per owner). An empty owner list makes no inbox GitHub requests. Stacks follow
-base/head branch dependencies in merge order, grouped by repository. Summaries
-come from PR descriptions; screenshots load through an authenticated GitHub-only
-attachment endpoint. Private PR content stays in the local server and browser.
+The review inbox API (`GET /api/inbox`) lists your authored open PRs only in
+configured `review.owners` (GitHub search: `author:@me user:OWNER` per owner). An
+empty owner list makes no inbox GitHub requests. Stacks follow same-repository
+base/head branch dependencies in merge order, grouped by repository; fork PRs
+never join a stack through their head branch name. Summaries come from PR
+descriptions; screenshots load through `GET /api/inbox/image`, an authenticated
+GitHub-only attachment endpoint. Private PR content stays in the local server.
 
 ```toml
 [review]
@@ -134,12 +136,13 @@ decision_command = ["/path/to/decision-hook", "--stdin"]
 ```
 
 `review.decision_command` (or `DECKY_REVIEW_DECISION_COMMAND`, a JSON string array)
-is an argv list executed without a shell. Merge/Hold sends one JSON object on stdin:
+is an argv list executed without a shell. `POST /api/inbox/decision` sends one JSON
+object on stdin:
 `{"version":1,"decision":"hold","scope":"stack","repo":"example-org/example-repo","prs":[{"number":1,"url":"https://github.com/example-org/example-repo/pull/1","head_sha":"abc123"}],"note":"Please explain the migration"}`.
 PRs are in merge order. The command has 30 seconds to exit successfully; failures
-appear on the page. A timeout may have delivered the answer, so check the recipient
-before retrying. Decky does not merge or approve PRs. Buttons stay disabled without
-a command. Last answers remain in the browser tab for the session, keyed by commit.
+return an error message. A timeout may have delivered the answer, so check the
+recipient before retrying. Without a command the endpoint returns 409. Decky does
+not merge or approve PRs.
 
 For phone access, run behind an authenticated reverse proxy; never expose the
 unauthenticated server directly. Keep the default loopback bind and serve the SPA
@@ -151,8 +154,13 @@ allowed_hosts = ["review.example.com"]
 ```
 
 `DECKY_SERVER_ALLOWED_HOSTS` also accepts a JSON array or comma-separated names.
-Restart the server after changing allowed hosts. Host filtering is not authentication. Everyone able to reach the server can read
-PR content, edit config, and run configured actions.
+Restart the server after changing allowed hosts; an invalid entry stops the server
+from starting. Requests through an allowed host may only load the SPA and static
+assets, `GET /api/inbox`, `GET /api/inbox/image`, and `POST /api/inbox/decision`.
+Every other API route (config reads and writes, review launch, opening URLs,
+queue, status) and `/mcp` return 403 for those requests; loopback access is
+unchanged. Host filtering is not authentication: everyone able to reach the
+proxy can read inbox PR content and send merge/hold answers.
 
 Optional `status.command` prints JSON with `waiting` and `running` lists (`title` and `url` per item) for the waiting strip.
 
