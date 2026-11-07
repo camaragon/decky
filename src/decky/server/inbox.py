@@ -4,7 +4,7 @@ import json
 import re
 import subprocess
 from urllib.error import URLError
-from urllib.parse import urlsplit
+from urllib.parse import quote, unquote, urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 import click
@@ -148,7 +148,7 @@ def decision(answer: Answer, request: WebRequest):
     return {"message": "Answer delivered", "decision": answer.decision}
 
 
-IMAGE_HOSTS = {"github.com", "user-images.githubusercontent.com", "private-user-images.githubusercontent.com", "camo.githubusercontent.com", "objects.githubusercontent.com"}
+IMAGE_HOSTS = {"raw.githubusercontent.com", "github.com", "user-images.githubusercontent.com", "private-user-images.githubusercontent.com", "camo.githubusercontent.com", "objects.githubusercontent.com"}
 
 
 def safe_image(url: str) -> bool:
@@ -157,6 +157,37 @@ def safe_image(url: str) -> bool:
         return p.scheme == "https" and p.hostname in IMAGE_HOSTS and not p.username and not p.password and p.port in (None, 443)
     except ValueError:
         return False
+
+
+def image_sources(url: str, repo: str) -> list[str]:
+    p = urlsplit(url)
+    parts = unquote(p.path).strip("/").split("/")
+    if p.hostname == "raw.githubusercontent.com":
+        offset = 2
+    elif p.hostname == "github.com" and len(parts) > 2 and parts[2] in {"blob", "raw"}:
+        offset = 3
+    else:
+        return [url]
+    if "/".join(parts[:2]).lower() != repo.lower() or len(parts) < offset + 2 or any(part in {"", ".", ".."} for part in parts):
+        raise HTTPException(403, "Image is not a file in the PR repository")
+    # Try longer refs first because branch names can contain slashes.
+    return [f"https://api.github.com/repos/{quote(repo, safe='/')}/contents/{quote('/'.join(parts[split:]), safe='/')}?"
+            + urlencode({"ref": "/".join(parts[offset:split])})
+            for split in range(len(parts) - 1, offset, -1)]
+
+
+def raster_kind(content: bytes) -> str | None:
+    if content.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if content.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if content[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    if content[:4] == b"RIFF" and content[8:12] == b"WEBP":
+        return "image/webp"
+    if content[4:12] in (b"ftypavif", b"ftypavis"):
+        return "image/avif"
+    return None
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -171,6 +202,7 @@ def image(request: WebRequest, repo: str, number: int, url: str):
         row = request.app.state.decky.inbox_rows.get((repo, number))
     if repo.split("/")[0].lower() not in owners() or not row or url not in row["image_urls"] or not safe_image(url):
         raise HTTPException(403, "Image is not an allowed PR attachment")
+    image_sources(url, repo)
     token = github.run_gh("auth", "token", "--hostname", "github.com")
     if token.returncode:
         raise HTTPException(502, "GitHub credentials unavailable")
@@ -180,20 +212,31 @@ def image(request: WebRequest, repo: str, number: int, url: str):
             if not safe_image(url):
                 raise HTTPException(403, "Image redirect host is not allowed")
             try:
-                upstream = opener.open(Request(url, headers={"Authorization": f"Bearer {token.stdout.strip()}"}), timeout=15)
+                sources = image_sources(url, repo)
+                for index, source in enumerate(sources):
+                    headers = {"Authorization": f"Bearer {token.stdout.strip()}"}
+                    if source != url:
+                        headers["Accept"] = "application/vnd.github.raw"
+                    try:
+                        upstream = opener.open(Request(source, headers=headers), timeout=15)
+                        break
+                    except HTTPError as error:
+                        if error.code != 404 or index == len(sources) - 1:
+                            raise
+                        error.close()
             except HTTPError as error:
                 if error.code in (301, 302, 303, 307, 308):
                     url = error.headers.get("Location", "")
                     continue
                 raise
             with upstream:
-                kind = upstream.headers.get_content_type()
-                if kind not in {"image/png", "image/jpeg", "image/gif", "image/webp", "image/avif"}:
-                    raise HTTPException(415, "Unsupported image type")
                 content = upstream.read(10 * 1024 * 1024 + 1)
-                if len(content) > 10 * 1024 * 1024:
-                    raise HTTPException(413, "Image exceeds 10 MiB")
-                return Response(content, media_type=kind, headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
+                kind = raster_kind(content) if source != url else upstream.headers.get_content_type()
+            if kind not in {"image/png", "image/jpeg", "image/gif", "image/webp", "image/avif"}:
+                raise HTTPException(415, "Unsupported image type")
+            if len(content) > 10 * 1024 * 1024:
+                raise HTTPException(413, "Image exceeds 10 MiB")
+            return Response(content, media_type=kind, headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
     except (URLError, OSError):
         raise HTTPException(502, "Could not fetch GitHub image") from None
     raise HTTPException(502, "Too many image redirects")

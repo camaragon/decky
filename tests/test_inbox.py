@@ -1,5 +1,8 @@
 """Inbox scoping, attachment boundaries, and decision delivery."""
 import json
+from email.message import Message
+from io import BytesIO
+from urllib.error import HTTPError
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -158,3 +161,100 @@ def test_proxy_host_only_reaches_inbox(setup, monkeypatch, tmp_path):
     save.assert_called_once_with("review.command", "agent {url}")
     opened.assert_called_once_with("https://example.com")
     assert local.post("/api/inbox/decision", json=answer).status_code == 200
+
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"example-image"
+
+
+@pytest.mark.parametrize("prefix,suffix", [("https://github.com/", "/blob/"),
+                                           ("https://github.com/", "/raw/"),
+                                           ("https://raw.githubusercontent.com/", "/")])
+@pytest.mark.parametrize("ref", ["main", "feature/screenshots"])
+def test_repository_image_uses_contents_api(setup, monkeypatch, prefix, suffix, ref):
+    _, client = setup
+    p = row(1)
+    url = f"{prefix}{p['repo']}{suffix}{ref}/docs/screen.png"
+    if suffix == "/blob/":
+        url += "?raw=true"
+    p["image_urls"] = [url]
+    client.app.state.decky.inbox_rows = {(p["repo"], 1): p}
+    monkeypatch.setattr(inbox.github, "run_gh", Mock(return_value=SimpleNamespace(returncode=0, stdout="example-token\n")))
+    headers = Message()
+    headers["Content-Type"] = "application/vnd.github.raw; charset=utf-8"
+    upstream = BytesIO(PNG)
+    upstream.headers = headers
+    calls = []
+
+    def fetch(request, timeout):
+        calls.append(request)
+        assert timeout == 15
+        from urllib.parse import quote_plus
+        target = f"https://api.github.com/repos/{p['repo']}/contents/docs/screen.png?ref={quote_plus(ref)}"
+        if request.full_url != target:
+            raise HTTPError(request.full_url, 404, "Not Found", Message(), BytesIO())
+        return upstream
+
+    monkeypatch.setattr(inbox, "build_opener", lambda *args: SimpleNamespace(open=fetch))
+    response = client.get("/api/inbox/image", params={"repo": p["repo"], "number": 1, "url": url})
+    assert response.status_code == 200
+    assert response.content == PNG
+    assert response.headers["content-type"] == "image/png"
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert len(calls) == 2
+    assert all(call.get_header("Authorization") == "Bearer example-token" for call in calls)
+    assert all(call.get_header("Accept") == "application/vnd.github.raw" for call in calls)
+
+
+@pytest.mark.parametrize("url", [
+    "https://github.com/example-org/other-repo/blob/main/screen.png?raw=true",
+    "https://github.com/example-user/example-repo/raw/main/screen.png",
+    "https://raw.githubusercontent.com/example-org/other-repo/main/screen.png",
+])
+def test_repository_image_refuses_other_repository(setup, monkeypatch, url):
+    _, client = setup
+    p = row(1)
+    p["image_urls"] = [url]
+    client.app.state.decky.inbox_rows = {(p["repo"], 1): p}
+    credentials = Mock(side_effect=AssertionError("must not fetch credentials"))
+    monkeypatch.setattr(inbox.github, "run_gh", credentials)
+    assert client.get("/api/inbox/image", params={"repo": p["repo"], "number": 1, "url": url}).status_code == 403
+    credentials.assert_not_called()
+
+
+@pytest.mark.parametrize("body,status", [(b"<svg xmlns='http://www.w3.org/2000/svg'/>", 415),
+                                         (PNG.ljust(10 * 1024 * 1024 + 1, b"x"), 413)])
+def test_repository_image_preserves_raster_and_size_limits(setup, monkeypatch, body, status):
+    _, client = setup
+    p = row(1)
+    url = f"https://github.com/{p['repo']}/blob/main/screen.png"
+    p["image_urls"] = [url]
+    client.app.state.decky.inbox_rows = {(p["repo"], 1): p}
+    monkeypatch.setattr(inbox.github, "run_gh", Mock(return_value=SimpleNamespace(returncode=0, stdout="example-token")))
+    headers = Message()
+    headers["Content-Type"] = "application/vnd.github.raw; charset=utf-8"
+    upstream = BytesIO(body)
+    upstream.headers = headers
+    monkeypatch.setattr(inbox, "build_opener", lambda *args: SimpleNamespace(open=lambda *args, **kwargs: upstream))
+    assert client.get("/api/inbox/image", params={"repo": p["repo"], "number": 1, "url": url}).status_code == status
+
+
+@pytest.mark.parametrize("body,kind", [(b"\xff\xd8\xff\xe0example", "image/jpeg"),
+                                       (b"GIF89aexample", "image/gif"),
+                                       (b"RIFF\x00\x00\x00\x00WEBPexample", "image/webp"),
+                                       (b"\x00\x00\x00\x1cftypavifexample", "image/avif")])
+def test_repository_image_serves_detected_raster_type(setup, monkeypatch, body, kind):
+    _, client = setup
+    p = row(1)
+    url = f"https://raw.githubusercontent.com/{p['repo']}/main/screen.img"
+    p["image_urls"] = [url]
+    client.app.state.decky.inbox_rows = {(p["repo"], 1): p}
+    monkeypatch.setattr(inbox.github, "run_gh", Mock(return_value=SimpleNamespace(returncode=0, stdout="example-token")))
+    headers = Message()
+    headers["Content-Type"] = "application/vnd.github.raw; charset=utf-8"
+    upstream = BytesIO(body)
+    upstream.headers = headers
+    monkeypatch.setattr(inbox, "build_opener", lambda *args: SimpleNamespace(open=lambda *args, **kwargs: upstream))
+    response = client.get("/api/inbox/image", params={"repo": p["repo"], "number": 1, "url": url})
+    assert response.status_code == 200
+    assert response.headers["content-type"] == kind
