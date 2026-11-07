@@ -121,6 +121,16 @@ decky server
 decky server --no-open --dev               # API only; use pnpm -C web dev for the SPA
 ```
 
+The **Review inbox** at `/inbox` is a phone-friendly view of your open PRs.
+It groups stacks by repository and numbers PRs in merge order. Each PR shows check
+and review status, a plain-text summary from its description, changed-file counts,
+GitHub screenshot thumbnails, and links to the PR and diff. Expand the description
+or file list for more detail. Per-PR and whole-stack Merge/Hold buttons send an
+optional note through the decision hook; they stay disabled without a command.
+Delivery success or failure appears inline. Last answers stay in the browser tab
+for the session, keyed by PR commit. The inbox does not load dashboard buckets,
+configuration, queue, or status APIs, so it also works through the restricted proxy.
+
 The review inbox API (`GET /api/inbox`) lists your authored open PRs only in
 configured `review.owners` (GitHub search: `author:@me user:OWNER` per owner). An
 empty owner list makes no inbox GitHub requests. Stacks follow same-repository
@@ -139,7 +149,9 @@ decision_command = ["/path/to/decision-hook", "--stdin"]
 is an argv list executed without a shell. `POST /api/inbox/decision` sends one JSON
 object on stdin:
 `{"version":1,"decision":"hold","scope":"stack","repo":"example-org/example-repo","prs":[{"number":1,"url":"https://github.com/example-org/example-repo/pull/1","head_sha":"abc123"}],"note":"Please explain the migration"}`.
-PRs are in merge order. The command has 30 seconds to exit successfully; failures
+PRs are in merge order. Before running the command, Decky re-queries only the
+answer's repository: owners outside `review.owners` get 403, and a changed stack
+or head commit gets 409 (refresh and review again). The command has 30 seconds to exit successfully; failures
 return an error message. A timeout may have delivered the answer, so check the
 recipient before retrying. Without a command the endpoint returns 409. Decky does
 not merge or approve PRs.

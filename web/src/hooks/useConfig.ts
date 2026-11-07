@@ -2,10 +2,11 @@ import { useQuery } from "@tanstack/react-query";
 
 import { fetchConfig } from "../lib/api";
 
-export function useConfig() {
+export function useConfig(enabled = true) {
   return useQuery({
     queryKey: ["config"],
     queryFn: fetchConfig,
+    enabled,
   });
 }
 

@@ -14,6 +14,7 @@ import { cn } from "../lib/utils";
 const links = [
   { to: "/", label: "Reviews" },
   { to: "/prs", label: "My PRs" },
+  { to: "/inbox", label: "Inbox" },
   { to: "/config", label: "Config" },
 ];
 
@@ -27,16 +28,17 @@ export function Layout({
   children: ReactNode;
 }) {
   const location = useLocation();
+  const isInbox = location.pathname === "/inbox";
   const collapsed = localStorage.getItem("decky.sidebar") === "collapsed";
   const counts: Record<string, number> = { "/": reviewCount, "/prs": mineCount };
-  const meta = useQuery({ queryKey: ["meta"], queryFn: fetchMeta });
-  const status = useStatus(Boolean(meta.data?.statusConfigured));
+  const meta = useQuery({ queryKey: ["meta"], queryFn: fetchMeta, enabled: !isInbox });
+  const status = useStatus(!isInbox && Boolean(meta.data?.statusConfigured));
   const statusPayload = status.data && !status.data.disabled ? status.data : null;
 
   return (
     <div
       className={cn(
-        "grid min-h-screen bg-background",
+        "grid min-h-screen bg-background layout",
         collapsed ? "grid-cols-[3rem_1fr]" : "grid-cols-[14rem_1fr]",
       )}
     >
@@ -46,6 +48,7 @@ export function Layout({
           <ThemeToggle />
           <Button
             type="button"
+            aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
             variant="ghost"
             size="icon"
             className="shrink-0"
@@ -58,11 +61,11 @@ export function Layout({
             {collapsed ? "»" : "«"}
           </Button>
         </div>
-        {!collapsed ? <QueryFeedback label="settings" query={meta} /> : null}
-        {!collapsed && meta.data?.statusConfigured ? (
+        {!isInbox && !collapsed ? <QueryFeedback label="settings" query={meta} /> : null}
+        {!isInbox && !collapsed && meta.data?.statusConfigured ? (
           <QueryFeedback label="status" query={status} />
         ) : null}
-        {!collapsed && statusPayload ? (
+        {!isInbox && !collapsed && statusPayload ? (
           <StatusSidebar
             waiting={statusPayload.waiting}
             running={statusPayload.running}
@@ -77,7 +80,7 @@ export function Layout({
               to={link.to}
               title={link.label}
               className={cn(
-                "rounded-md px-2 py-1.5 text-xs hover:bg-accent",
+                "min-h-11 flex items-center rounded-md px-2 py-1.5 text-xs hover:bg-accent",
                 location.pathname === link.to && "bg-accent font-semibold",
                 collapsed && "text-center px-1",
               )}

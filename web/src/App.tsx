@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { BrowserRouter, Navigate, Route, Routes, useNavigate } from "react-router";
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router";
 
 import { Layout } from "./components/Layout";
 import { hideAuthorList, useConfig } from "./hooks/useConfig";
@@ -10,6 +10,7 @@ import { fetchMeta } from "./lib/api";
 import { filterRows, loadFilters } from "./lib/filters";
 import { queueToRow } from "./lib/queue";
 import { ConfigPage } from "./pages/Config";
+import { InboxPage } from "./pages/Inbox";
 import { MyPrsPage } from "./pages/MyPrs";
 import { ReviewsPage } from "./pages/Reviews";
 
@@ -17,9 +18,9 @@ function Hotkeys() {
   const navigate = useNavigate();
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.key === "t") {
-        const order = ["/", "/prs", "/config"];
+        const order = ["/", "/prs", "/inbox", "/config"];
         const idx = order.indexOf(window.location.pathname);
         navigate(order[(idx + 1) % order.length]);
       }
@@ -31,13 +32,14 @@ function Hotkeys() {
 }
 
 function Shell() {
-  const meta = useQuery({ queryKey: ["meta"], queryFn: fetchMeta });
+  const isInbox = useLocation().pathname === "/inbox";
+  const meta = useQuery({ queryKey: ["meta"], queryFn: fetchMeta, enabled: !isInbox });
   const useQueueSource = Boolean(meta.data?.queueConfigured);
-  const queue = useQueue(useQueueSource);
-  const config = useConfig();
-  const review = useTable("review", !useQueueSource);
-  const team = useTable("team", !useQueueSource);
-  const mine = useTable("mine", !useQueueSource);
+  const queue = useQueue(useQueueSource && !isInbox);
+  const config = useConfig(!isInbox);
+  const review = useTable("review", !useQueueSource && !isInbox);
+  const team = useTable("team", !useQueueSource && !isInbox);
+  const mine = useTable("mine", !useQueueSource && !isInbox);
   const hideAuthors = hideAuthorList(config.data?.settings);
   const reviewFilters = loadFilters("reviews-page");
   const mineFilters = loadFilters("mine-page");
@@ -66,6 +68,7 @@ function Shell() {
         <Routes>
           <Route path="/" element={<ReviewsPage />} />
           <Route path="/prs" element={<MyPrsPage />} />
+          <Route path="/inbox" element={<InboxPage />} />
           <Route path="/config" element={<ConfigPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

@@ -67,7 +67,7 @@ def test_image_refuses_non_pr_urls(setup, monkeypatch, url):
 def test_decision_payload_and_stale_head(setup, monkeypatch):
     _, client = setup
     prs = [row(1), row(2, "branch-1")]
-    monkeypatch.setattr(inbox, "load", lambda: {"stacks": [{"repo": prs[0]["repo"], "prs": prs}]})
+    monkeypatch.setattr(inbox, "search", lambda owner, repo=None: (prs, []))
     command = Mock(return_value=SimpleNamespace(returncode=0))
     monkeypatch.setattr(inbox, "run_command", command)
     answer = {"repo": prs[0]["repo"], "numbers": [1, 2], "head_shas": ["sha-1", "sha-2"], "scope": "stack", "decision": "hold", "note": "Please explain the change"}
@@ -77,6 +77,34 @@ def test_decision_payload_and_stale_head(setup, monkeypatch):
     assert payload == {"version": 1, "decision": "hold", "scope": "stack", "repo": prs[0]["repo"], "prs": [{k: p[k] for k in ("number", "url", "head_sha")} for p in prs], "note": answer["note"]}
     answer["head_shas"] = ["old", "sha-2"]
     assert client.post("/api/inbox/decision", json=answer).status_code == 409
+    assert command.call_count == 1
+
+
+def test_decision_queries_only_answer_repo(setup, monkeypatch):
+    settings, client = setup
+    settings["review.owners"] = ["example-org", "example-user"]
+    nodes = [{"number": n, "repository": {"nameWithOwner": repo}} for n, repo in
+             [(1, "example-org/example-repo"), (9, "example-org/other-repo"), (2, "example-org/example-repo")]]
+    query = Mock(return_value={"data": {"search": {"nodes": nodes, "pageInfo": {"hasNextPage": False}}}})
+    monkeypatch.setattr(inbox.github, "_gh_json", query)
+
+    def load_pr(repo, number):
+        if repo != "example-org/example-repo":
+            raise click.ClickException("unrelated repo failed")
+        return {**row(number, "branch-1" if number == 2 else "main"), "body": ""}, []
+    monkeypatch.setattr(inbox.github, "load_pr", load_pr)
+    command = Mock(return_value=SimpleNamespace(returncode=0))
+    monkeypatch.setattr(inbox, "run_command", command)
+    answer = {"repo": "example-org/example-repo", "numbers": [1, 2], "head_shas": ["sha-1", "sha-2"], "scope": "stack", "decision": "merge"}
+    assert client.post("/api/inbox/decision", json=answer).status_code == 200
+    assert query.call_count == 1
+    assert "q=is:pr is:open author:@me user:example-org repo:example-org/example-repo" in query.call_args.args
+    assert [p["number"] for p in json.loads(command.call_args.kwargs["input"])["prs"]] == [1, 2]
+    answer["numbers"], answer["head_shas"] = [2, 1], ["sha-2", "sha-1"]
+    assert client.post("/api/inbox/decision", json=answer).status_code == 409
+    for repo in ["example-other/example-repo", "example-org/example-repo author:someone"]:
+        assert client.post("/api/inbox/decision", json={**answer, "repo": repo}).status_code in (400, 403)
+    assert query.call_count == 2
     assert command.call_count == 1
 
 
@@ -107,7 +135,7 @@ def test_proxy_host_only_reaches_inbox(setup, monkeypatch, tmp_path):
     opened = Mock()
     monkeypatch.setattr(api, "open_http_url", opened)
     prs = [row(1)]
-    monkeypatch.setattr(inbox, "load", lambda: {"stacks": [{"repo": prs[0]["repo"], "prs": prs}]})
+    monkeypatch.setattr(inbox, "search", lambda owner, repo=None: (prs, []))
     command = Mock(return_value=SimpleNamespace(returncode=0))
     monkeypatch.setattr(inbox, "run_command", command)
     answer = {"repo": prs[0]["repo"], "numbers": [1], "head_shas": ["sha-1"], "scope": "pr", "decision": "merge"}

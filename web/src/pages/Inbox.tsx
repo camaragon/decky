@@ -1,0 +1,96 @@
+import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+
+import { fetchInbox, sendAnswer, type InboxPr, type InboxStack } from "../lib/api";
+import { Button } from "../components/ui/button";
+
+function plain(text: string) {
+  return text.replace(/<[^>]*>/g, "").replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/^[#>]+\s*/gm, "").replace(/[*_`]/g, "").trim();
+}
+function summary(body: string) {
+  const section = body.match(/^#{1,6}\s+(?:what(?: changed)?|summary)\s*\r?\n([\s\S]*?)(?=^#{1,6}\s|$(?![\s\S]))/im);
+  return plain(section?.[1]?.trim() || body.trim().split(/\r?\n\s*\r?\n/)[0] || "No description provided.");
+}
+const answerKey = (pr: InboxPr) => `${pr.repo}#${pr.number}@${pr.head_sha}`;
+function savedAnswers(): Record<string, string> {
+  try { return JSON.parse(sessionStorage.getItem("decky.inbox.answers.v1") || "{}"); }
+  catch { return {}; }
+}
+
+function AnswerForm({ stack, scope, enabled, onAnswered }: {
+  stack: InboxStack; scope: "pr" | "stack"; enabled: boolean;
+  onAnswered: (prs: InboxPr[], answer: string) => void;
+}) {
+  const [note, setNote] = useState("");
+  const [pending, setPending] = useState(false);
+  const [message, setMessage] = useState("");
+  async function answer(decision: "merge" | "hold") {
+    setPending(true); setMessage("");
+    try {
+      const result = await sendAnswer(stack, scope, decision, note);
+      onAnswered(stack.prs, `${decision === "merge" ? "Merge" : "Hold"}${note ? `: ${note}` : ""}`);
+      setMessage(result.message); setNote("");
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Could not deliver answer"); }
+    finally { setPending(false); }
+  }
+  return <div className="space-y-2">
+    <label className="block text-sm">Optional note for {scope === "stack" ? "whole stack" : `PR #${stack.prs[0].number}`}
+      <textarea name="note" autoComplete="off" maxLength={10000} className="mt-1 block min-h-16 w-full rounded border border-border bg-background p-2" value={note} onChange={e => setNote(e.target.value)} />
+    </label>
+    <div className="flex flex-wrap gap-2">
+      <Button className="min-h-11 flex-1" disabled={!enabled || pending} onClick={() => answer("merge")}>Merge{scope === "stack" ? " stack" : ""}</Button>
+      <Button className="min-h-11 flex-1" variant="outline" disabled={!enabled || pending} onClick={() => answer("hold")}>Hold{scope === "stack" ? " stack" : ""}</Button>
+    </div>
+    {!enabled ? <p className="text-sm text-muted-foreground">Configure review.decision_command to send answers.</p> : null}
+    <p role="status" className="text-sm">{pending ? "Sending answer…" : message}</p>
+  </div>;
+}
+
+export function InboxPage() {
+  const inbox = useQuery({ queryKey: ["inbox"], queryFn: fetchInbox, staleTime: 60000, refetchOnWindowFocus: false, retry: false });
+  const [answers, setAnswers] = useState(savedAnswers);
+  function remember(prs: InboxPr[], answer: string) {
+    setAnswers(previous => {
+      const next = { ...previous };
+      for (const pr of prs) next[answerKey(pr)] = answer;
+      try { sessionStorage.setItem("decky.inbox.answers.v1", JSON.stringify(next)); } catch { /* Session memory still works when storage is unavailable. */ }
+      return next;
+    });
+  }
+  return <div className="inbox mx-auto max-w-3xl space-y-4">
+    <div className="flex items-center justify-between gap-2"><h1 className="text-xl font-semibold">Review inbox</h1>
+      <Button variant="outline" className="min-h-11" disabled={inbox.isFetching} onClick={() => inbox.refetch()}>Refresh</Button></div>
+    <p className="text-sm text-muted-foreground">Your open PRs, in merge order. Answers go to your configured command.</p>
+    {inbox.isFetching ? <p role="status">Loading PRs…</p> : null}
+    {inbox.error ? <p role="alert">{inbox.error.message}</p> : null}
+    {inbox.data?.owners.length === 0 ? <p>Configure review.owners to see your open PRs. No GitHub queries were made.</p> : null}
+    {inbox.data?.owners.length && !inbox.data.stacks.length ? <p>No open PRs in your configured owners.</p> : null}
+    {inbox.data?.notes.map(note => <p key={note} className="text-sm">{note}</p>)}
+    {inbox.data?.stacks.map((stack, index, all) => <section key={`${stack.repo}:${stack.prs[0].number}`}>
+      {index === 0 || all[index - 1].repo !== stack.repo ? <h2 className="mb-2 break-words text-lg font-semibold">{stack.repo}</h2> : null}
+      <details open className="rounded-lg border border-border bg-card">
+        <summary className="cursor-pointer p-3 font-medium">{stack.prs.length === 1 ? "Single PR" : `${stack.prs.length} PR stack`} · {stack.prs[0].title}</summary>
+        <div className="space-y-4 p-3 pt-0">
+          {stack.prs.map((pr, order) => <article key={pr.number} className="space-y-3 rounded-md border border-border p-3">
+            <h3 className="font-semibold">{order + 1}. #{pr.number} {pr.title}</h3>
+            <div className="flex flex-wrap gap-2 text-sm"><span className={`check-${pr.checks} rounded border px-2 py-1`}>Checks: {pr.checks}</span>
+              <span className="rounded border border-border px-2 py-1">{pr.review_decision?.replaceAll("_", " ") || "No review decision"}</span>{pr.draft ? <span>Draft</span> : null}</div>
+            <p className="whitespace-pre-wrap text-sm">{summary(pr.body)}</p>
+            <details><summary className="cursor-pointer">Full description</summary><p className="whitespace-pre-wrap text-sm">{plain(pr.body) || "No description provided."}</p></details>
+            <details><summary className="cursor-pointer">{pr.changed_files} files changed · +{pr.files.reduce((n, f) => n + f.additions, 0)} / −{pr.files.reduce((n, f) => n + f.deletions, 0)}</summary>
+              <ul className="space-y-2 text-sm">{pr.files.map(file => <li key={file.path}>{file.path} <span className="whitespace-nowrap">+{file.additions} / −{file.deletions}</span></li>)}</ul></details>
+            <div className="grid grid-cols-2 gap-2">{pr.image_urls.map((url, i) => {
+              const src = `/api/inbox/image?${new URLSearchParams({ repo: pr.repo, number: String(pr.number), url })}`;
+              return <a key={url} href={src} target="_blank" rel="noreferrer"><img src={src} alt={`PR #${pr.number} screenshot ${i + 1}`} loading="lazy" className="h-28 w-full rounded border border-border object-contain" /></a>;
+            })}</div>
+            <div className="flex flex-wrap gap-3 text-sm"><a href={pr.url} target="_blank" rel="noreferrer">Open PR ↗</a><a href={`${pr.url}/files`} target="_blank" rel="noreferrer">Files changed ↗</a></div>
+            {answers[answerKey(pr)] ? <p className="text-sm">Last answer: {answers[answerKey(pr)]}</p> : null}
+            <AnswerForm stack={{ repo: stack.repo, prs: [pr] }} scope="pr" enabled={Boolean(inbox.data?.decision_enabled)} onAnswered={remember} />
+          </article>)}
+          <AnswerForm stack={stack} scope="stack" enabled={Boolean(inbox.data?.decision_enabled)} onAnswered={remember} />
+        </div>
+      </details>
+    </section>)}
+  </div>;
+}

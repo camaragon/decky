@@ -54,36 +54,45 @@ def stacks(rows: list[dict]) -> list[dict]:
     return result
 
 
+def search(owner: str, repo: str | None = None) -> tuple[list[dict], list[str]]:
+    rows, notes = [], []
+    # GitHub issue search spells the owner qualifier `user:`, including organizations.
+    q = f"is:pr is:open author:@me user:{owner}" + (f" repo:{repo}" if repo else "")
+    cursor = None
+    while True:
+        query = '''query($q: String!, $cursor: String) {
+          search(query: $q, type: ISSUE, first: 100, after: $cursor) {
+            pageInfo { hasNextPage endCursor }
+            nodes { ... on PullRequest { number repository { nameWithOwner } } }
+          }
+        }'''
+        args = ["api", "graphql", "-f", f"query={query}", "-f", f"q={q}"]
+        if cursor:
+            args += ["-f", f"cursor={cursor}"]
+        page = github._gh_json(*args)["data"]["search"]
+        for node in page["nodes"]:
+            slug = node["repository"]["nameWithOwner"]
+            if slug.split("/")[0].lower() != owner or (repo and slug.lower() != repo.lower()):
+                continue
+            row, warnings = github.load_pr(slug, node["number"])
+            if row["repo"].split("/")[0].lower() != owner:
+                continue
+            row["image_urls"] = image_urls(row["body"])
+            rows.append(row)
+            notes.extend(warnings)
+        if not page["pageInfo"]["hasNextPage"]:
+            break
+        cursor = page["pageInfo"]["endCursor"]
+    return rows, notes
+
+
 def load() -> dict:
     configured = owners()
     rows, notes = [], []
     for owner in configured:
-        # GitHub issue search spells the owner qualifier `user:`, including organizations.
-        cursor = None
-        while True:
-            query = '''query($q: String!, $cursor: String) {
-              search(query: $q, type: ISSUE, first: 100, after: $cursor) {
-                pageInfo { hasNextPage endCursor }
-                nodes { ... on PullRequest { number repository { nameWithOwner } } }
-              }
-            }'''
-            args = ["api", "graphql", "-f", f"query={query}", "-f", f"q=is:pr is:open author:@me user:{owner}"]
-            if cursor:
-                args += ["-f", f"cursor={cursor}"]
-            page = github._gh_json(*args)["data"]["search"]
-            for node in page["nodes"]:
-                repo = node["repository"]["nameWithOwner"]
-                if repo.split("/")[0].lower() != owner:
-                    continue
-                row, warnings = github.load_pr(repo, node["number"])
-                if row["repo"].split("/")[0].lower() != owner:
-                    continue
-                row["image_urls"] = image_urls(row["body"])
-                rows.append(row)
-                notes.extend(warnings)
-            if not page["pageInfo"]["hasNextPage"]:
-                break
-            cursor = page["pageInfo"]["endCursor"]
+        found, warnings = search(owner)
+        rows += found
+        notes += warnings
     command, _ = config.resolve("review.decision_command")
     return {"owners": configured, "stacks": stacks(rows), "notes": list(dict.fromkeys(notes)), "decision_enabled": bool(command)}
 
@@ -100,7 +109,7 @@ def inbox(request: WebRequest, response: Response):
 class Answer(BaseModel):
     decision: Literal["merge", "hold"]
     scope: Literal["pr", "stack"]
-    repo: str
+    repo: str = Field(pattern=r"^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?/[A-Za-z0-9._-]+$")
     numbers: list[int] = Field(min_length=1)
     head_shas: list[str]
     note: str = Field(default="", max_length=10000)
@@ -111,9 +120,12 @@ def decision(answer: Answer, request: WebRequest):
     command, _ = config.resolve("review.decision_command")
     if not command:
         raise HTTPException(409, "Configure review.decision_command to send answers")
-    data = load()
+    owner = answer.repo.split("/")[0].lower()
+    if owner not in owners():
+        raise HTTPException(403, "Repository owner is not in review.owners")
+    rows, _ = search(owner, answer.repo)
     selected = None
-    for stack in data["stacks"]:
+    for stack in stacks(rows):
         if stack["repo"] != answer.repo:
             continue
         candidates = stack["prs"] if answer.scope == "stack" else [p for p in stack["prs"] if p["number"] in answer.numbers]
