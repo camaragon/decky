@@ -89,6 +89,7 @@ export function InboxPage() {
                 <span className={`rounded border px-2 py-1 ${pr.checks === "fail" ? "border-red-500 bg-red-500/10 text-red-700 dark:text-red-400" : pr.checks === "pending" ? "border-border text-amber-700 dark:text-amber-400" : "border-border text-muted-foreground"}`}>Checks: {pr.checks}</span>
                 <span className={`rounded border px-2 py-1 ${pr.review_decision === "CHANGES_REQUESTED" ? "border-red-500 bg-red-500/10 text-red-700 dark:text-red-400" : "border-border text-muted-foreground"}`}>{pr.review_decision?.replaceAll("_", " ") || "No review decision"}</span>
                 {pr.draft ? <span className="rounded border border-border px-2 py-1 text-muted-foreground">Draft</span> : null}
+                {answers[answerKey(pr)] ? <span className="rounded border border-border px-2 py-1 text-muted-foreground">Answered: {answers[answerKey(pr)].split(":")[0]}</span> : null}
               </span>
             </summary>
             <div className="space-y-3 p-3 pt-0">
