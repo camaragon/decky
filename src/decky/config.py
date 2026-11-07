@@ -74,6 +74,7 @@ SETTINGS: dict[str, Setting] = {
         Setting("review.all_owners", "DECKY_REVIEW_ALL_OWNERS", "Include authored open PRs across all owners", "false", kind="bool"),
         Setting("review.exclude_owners", "DECKY_REVIEW_EXCLUDE_OWNERS", "Owners excluded when review.all_owners is enabled", "[]", kind="list_str"),
         Setting("review.decision_command", "DECKY_REVIEW_DECISION_COMMAND", "Argv receiving review answers as JSON on stdin", "[]", kind="list_str"),
+        Setting("review.results_dir", "DECKY_REVIEW_RESULTS_DIR", "Local review-result directory (unset disables results)", kind="path"),
         Setting(
             "review.command",
             "DECKY_REVIEW_COMMAND",
@@ -346,6 +347,8 @@ dir = "~/prs"
 # When all_owners is true, exclude these owners before fetching PR details.
 # exclude_owners = ["example-org"]
 # decision_command = ["/path/to/decision-hook", "--stdin"]
+# Optional local review results; unset disables reading them.
+# results_dir = "~/.local/share/decky/review-results"
 # Required before `decky pr review` or Enter in the list.
 # Placeholders: {slug} {owner} {repo} {number} {url} {cwd}
 command = "your-review-agent {url}"

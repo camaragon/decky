@@ -16,6 +16,7 @@ from typing import Literal
 from decky import config, github
 from decky.commands.pr import image_urls
 from decky.process import run_command
+from decky.server import review_results
 
 router = APIRouter(prefix="/api/inbox")
 
@@ -104,6 +105,11 @@ def load() -> dict:
         found, warnings = search(owner)
         rows += found
         notes += warnings
+    directory, _ = config.resolve("review.results_dir")
+    for row in rows:
+        result = review_results.load(directory, row["repo"], row["number"], row["head_sha"])
+        if result is not None:
+            row["review_result"] = result
     command, _ = config.resolve("review.decision_command")
     return {"owners": configured, "all_owners": bool(all_owners), "stacks": stacks(rows), "notes": list(dict.fromkeys(notes)), "decision_enabled": bool(command)}
 

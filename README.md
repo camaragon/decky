@@ -221,6 +221,7 @@ Default file: `~/.config/decky/config.toml` (mode `600` on write).
 | `pr.watch_repos`   | `DECKY_PR_WATCH_REPOS`   | Extra review candidates from `owner/repo`                                |
 | `pr.watch_owners`  | `DECKY_PR_WATCH_OWNERS`  | Users or organizations for the JSON `watched` bucket                     |
 | `review.command`   | `DECKY_REVIEW_COMMAND`   | Review pane command template                                             |
+| `review.results_dir` | `DECKY_REVIEW_RESULTS_DIR` | Optional local review-result directory; unset by default ([format](docs/review-results.md)) |
 | `queue.command`    | `DECKY_QUEUE_COMMAND`    | Optional argv printing `{today, mine, direct, team}` JSON for the web UI |
 | `jira.browse_url`  | `DECKY_JIRA_BROWSE_URL`  | Optional `{key}` URL template for queue Jira links                       |
 | `terminal`         | `DECKY_TERMINAL`         | `tmux` (default) or `cmux`                                               |
