@@ -49,6 +49,11 @@ ISO 8601 timestamp with a timezone. Reviewer labels must contain 1–200 charact
 summary strings must contain 1–10,000 characters after trimming whitespace.
 Unknown fields are ignored; unsupported versions are ignored.
 
+`GET /api/inbox` adds a valid result to its PR row as `review_result` (the
+validated fields above, without unknown fields) plus `outdated`, which is `true`
+when `head_sha` differs from the PR's current head commit. PRs without a valid
+result have no `review_result` key.
+
 Files must be regular files, at most 256 KiB. Missing, unreadable, malformed,
 oversized, or symlinked files are quietly ignored. The reader uses a flat filename
 and does not follow symlinks from result files. Producers should write a temporary
