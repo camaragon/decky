@@ -105,7 +105,7 @@ def load() -> dict:
         rows += found
         notes += warnings
     command, _ = config.resolve("review.decision_command")
-    return {"owners": configured, "stacks": stacks(rows), "notes": list(dict.fromkeys(notes)), "decision_enabled": bool(command)}
+    return {"owners": configured, "all_owners": bool(all_owners), "stacks": stacks(rows), "notes": list(dict.fromkeys(notes)), "decision_enabled": bool(command)}
 
 
 @router.get("")
