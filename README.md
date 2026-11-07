@@ -156,8 +156,22 @@ generation time. An optional second opinion appears beside the first on wider
 screens and below it on phones, with its own risk and summary. A result for a
 different head SHA is labeled **Outdated result** in both views until an external
 producer replaces the file. Missing or invalid files leave the description
-summary available. Decky only reads these files; it does not produce reviews or
-send their contents to GitHub.
+summary available. Generate a result with:
+
+```sh
+decky review-result write owner/repo 123
+```
+
+Set `review.reviewer_command` and `review.second_reviewer_command` to argv arrays
+(prompt on stdin, JSON on stdout). Sensitive or large diffs require the second
+reviewer. Configure labels with `review.reviewer_label` and
+`review.second_reviewer_label`; tune `review.reviewer_timeout`,
+`review.large_diff_lines`, `review.max_diff_bytes`, and `review.sensitive_patterns`
+as needed. See [configuration and CLI examples](docs/review-results.md#generate-a-result).
+An external scheduler calls this command when each PR becomes ready or its head
+changes; matching heads and drafts are skipped (`--force` regenerates a matching
+head). PR descriptions and diffs go to the configured reviewer commands and may
+reach their model providers. Results stay local; nothing is posted to GitHub.
 
 ```toml
 [review]
