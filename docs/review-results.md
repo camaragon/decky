@@ -1,0 +1,69 @@
+# Local review results
+
+Set `review.results_dir` in `~/.config/decky/config.toml` to read local review
+results in the review inbox, or set `DECKY_REVIEW_RESULTS_DIR`:
+
+```toml
+[review]
+results_dir = "~/.local/share/decky/review-results"
+```
+
+This is opt-in and disabled when unset or empty. Unset the setting to disable it.
+The server reads files on each inbox refresh. It does not generate results,
+schedule reviewers, infer sensitive areas, or post results to GitHub. An external
+producer should write results for ready PRs and include a second opinion for
+sensitive changes (auth, credentials, billing, migrations, data rewrites, or large
+diffs). Regeneration when a PR is ready again belongs to that producer.
+
+## Version 1 format
+
+Use one UTF-8 JSON file per PR, directly inside the configured directory:
+`<owner>+<repo>-<number>.json`. Lowercase owner and repository names. For example,
+PR 101 in `example/demo` uses `example+demo-101.json`. The `+` separator cannot
+occur in GitHub owner or repository names.
+
+```json
+{
+  "version": 1,
+  "head_sha": "0123456789abcdef0123456789abcdef01234567",
+  "risk": "medium",
+  "summary": {
+    "what_changed": "Add a report export button.",
+    "why": "Let readers save a local copy.",
+    "what_to_check": "Try exporting an empty report."
+  },
+  "reviewer": "Primary reviewer",
+  "generated_at": "2026-11-07T12:00:00Z",
+  "second_opinion": {
+    "reviewer": "Second reviewer",
+    "risk": "high",
+    "summary": "Check that exports include only the intended fields."
+  }
+}
+```
+
+All fields except `second_opinion` are required. Omit it or use `null` when there
+is no second opinion. Both risks must be `low`, `medium`, or `high`. `head_sha`
+must be the full 40-character hexadecimal PR head commit. `generated_at` is an
+ISO 8601 timestamp with a timezone. Reviewer labels must contain 1–200 characters;
+summary strings must contain 1–10,000 characters after trimming whitespace.
+Unknown fields are ignored; unsupported versions are ignored.
+
+`GET /api/inbox` adds a valid result to its PR row as `review_result` (the
+validated fields above, without unknown fields) plus `outdated`, which is `true`
+when `head_sha` differs from the PR's current head commit. PRs without a valid
+result have no `review_result` key.
+
+Files must be regular files, at most 256 KiB. Missing, unreadable, malformed,
+oversized, or symlinked files are quietly ignored. The reader uses a flat filename
+and does not follow symlinks from result files. Producers should write a temporary
+file in the directory and atomically rename it to avoid partial reads.
+
+## Private data
+
+Result text stays in local files and is served as plain text through the existing
+inbox API to inbox viewers. The reader makes no network calls and writes nothing
+to GitHub. Results may contain private PR information: keep the directory private
+(for example mode `700`, files `600`), and apply the same access controls as the
+rest of the inbox if exposing the server through a proxy. Decky does not copy
+results into browser storage. An external producer controls its own data handling.
