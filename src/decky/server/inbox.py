@@ -20,12 +20,17 @@ from decky.process import run_command
 router = APIRouter(prefix="/api/inbox")
 
 
-def owners() -> list[str]:
-    values, _ = config.resolve("review.owners")
+def owners(key: str = "review.owners") -> list[str]:
+    values, _ = config.resolve(key)
     values = values or []
     if any(not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?", v) for v in values):
-        raise click.ClickException("review.owners must contain GitHub owner names")
+        raise click.ClickException(f"{key} must contain GitHub owner names")
     return list(dict.fromkeys(v.lower() for v in values))
+
+
+def owner_allowed(owner: str) -> bool:
+    all_owners, _ = config.resolve("review.all_owners")
+    return owner.lower() not in owners("review.exclude_owners") if all_owners else owner.lower() in owners()
 
 
 def stacks(rows: list[dict]) -> list[dict]:
@@ -54,10 +59,13 @@ def stacks(rows: list[dict]) -> list[dict]:
     return result
 
 
-def search(owner: str, repo: str | None = None) -> tuple[list[dict], list[str]]:
+def search(owner: str | None, repo: str | None = None) -> tuple[list[dict], list[str]]:
     rows, notes = [], []
     # GitHub issue search spells the owner qualifier `user:`, including organizations.
-    q = f"is:pr is:open author:@me user:{owner}" + (f" repo:{repo}" if repo else "")
+    excluded = owners("review.exclude_owners") if owner is None else []
+    q = "is:pr is:open author:@me"
+    q += f" user:{owner}" if owner is not None else "".join(f" -user:{value}" for value in excluded)
+    q += f" repo:{repo}" if repo else ""
     cursor = None
     while True:
         query = '''query($q: String!, $cursor: String) {
@@ -72,10 +80,12 @@ def search(owner: str, repo: str | None = None) -> tuple[list[dict], list[str]]:
         page = github._gh_json(*args)["data"]["search"]
         for node in page["nodes"]:
             slug = node["repository"]["nameWithOwner"]
-            if slug.split("/")[0].lower() != owner or (repo and slug.lower() != repo.lower()):
+            slug_owner = slug.split("/")[0].lower()
+            if slug_owner in excluded or (owner is not None and slug_owner != owner) or (repo and slug.lower() != repo.lower()):
                 continue
             row, warnings = github.load_pr(slug, node["number"])
-            if row["repo"].split("/")[0].lower() != owner:
+            row_owner = row["repo"].split("/")[0].lower()
+            if row_owner in excluded or (owner is not None and row_owner != owner):
                 continue
             row["image_urls"] = image_urls(row["body"])
             rows.append(row)
@@ -89,12 +99,13 @@ def search(owner: str, repo: str | None = None) -> tuple[list[dict], list[str]]:
 def load() -> dict:
     configured = owners()
     rows, notes = [], []
-    for owner in configured:
+    all_owners, _ = config.resolve("review.all_owners")
+    for owner in ([None] if all_owners else configured):
         found, warnings = search(owner)
         rows += found
         notes += warnings
     command, _ = config.resolve("review.decision_command")
-    return {"owners": configured, "stacks": stacks(rows), "notes": list(dict.fromkeys(notes)), "decision_enabled": bool(command)}
+    return {"owners": configured, "all_owners": bool(all_owners), "stacks": stacks(rows), "notes": list(dict.fromkeys(notes)), "decision_enabled": bool(command)}
 
 
 @router.get("")
@@ -121,9 +132,10 @@ def decision(answer: Answer, request: WebRequest):
     if not command:
         raise HTTPException(409, "Configure review.decision_command to send answers")
     owner = answer.repo.split("/")[0].lower()
-    if owner not in owners():
-        raise HTTPException(403, "Repository owner is not in review.owners")
-    rows, _ = search(owner, answer.repo)
+    if not owner_allowed(owner):
+        raise HTTPException(403, "Repository owner is not allowed by review settings")
+    all_owners, _ = config.resolve("review.all_owners")
+    rows, _ = search(None if all_owners else owner, answer.repo)
     selected = None
     for stack in stacks(rows):
         if stack["repo"] != answer.repo:
@@ -200,7 +212,7 @@ def image(request: WebRequest, repo: str, number: int, url: str):
     from urllib.error import HTTPError
     with request.app.state.decky.lock:
         row = request.app.state.decky.inbox_rows.get((repo, number))
-    if repo.split("/")[0].lower() not in owners() or not row or url not in row["image_urls"] or not safe_image(url):
+    if not owner_allowed(repo.split("/")[0]) or not row or url not in row["image_urls"] or not safe_image(url):
         raise HTTPException(403, "Image is not an allowed PR attachment")
     image_sources(url, repo)
     token = github.run_gh("auth", "token", "--hostname", "github.com")

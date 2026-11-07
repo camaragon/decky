@@ -64,8 +64,8 @@ export function InboxPage() {
     <p className="text-sm text-muted-foreground">Your open PRs, in merge order. Answers go to your configured command.</p>
     {inbox.isFetching ? <p role="status">Loading PRs…</p> : null}
     {inbox.error ? <p role="alert">{inbox.error.message}</p> : null}
-    {inbox.data?.owners.length === 0 ? <p>Configure review.owners to see your open PRs. No GitHub queries were made.</p> : null}
-    {inbox.data?.owners.length && !inbox.data.stacks.length ? <p>No open PRs in your configured owners.</p> : null}
+    {inbox.data && !inbox.data.all_owners && !inbox.data.owners.length ? <p>Configure review.owners to see your open PRs. No GitHub queries were made.</p> : null}
+    {inbox.data && (inbox.data.all_owners || inbox.data.owners.length > 0) && !inbox.data.stacks.length ? <p>{inbox.data.all_owners ? "No open PRs were found." : "No open PRs in your configured owners."}</p> : null}
     {inbox.data?.notes.map(note => <p key={note} className="text-sm">{note}</p>)}
     {inbox.data?.stacks.map((stack, index, all) => <section key={`${stack.repo}:${stack.prs[0].number}`}>
       {index === 0 || all[index - 1].repo !== stack.repo ? <h2 className="mb-2 break-words text-lg font-semibold">{stack.repo}</h2> : null}

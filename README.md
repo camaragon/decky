@@ -131,9 +131,15 @@ Delivery success or failure appears inline. Last answers stay in the browser tab
 for the session, keyed by PR commit. The inbox does not load dashboard buckets,
 configuration, queue, or status APIs, so it also works through the restricted proxy.
 
-The review inbox API (`GET /api/inbox`) lists your authored open PRs only in
+The review inbox API (`GET /api/inbox`) lists your authored open PRs by default in
 configured `review.owners` (GitHub search: `author:@me user:OWNER` per owner). An
-empty owner list makes no inbox GitHub requests. Stacks follow same-repository
+empty owner list makes no inbox GitHub requests with `review.all_owners = false`
+(the default). Set `review.all_owners = true` to use one paginated authored search
+across all owners and repositories instead. `review.exclude_owners` (default `[]`)
+excludes owners in this mode, both in the search query (`-user:OWNER`) and before
+fetching PR details. Owner names are case-insensitive. The environment equivalents
+are `DECKY_REVIEW_ALL_OWNERS` and `DECKY_REVIEW_EXCLUDE_OWNERS` (a JSON string array).
+Stacks follow same-repository
 base/head branch dependencies in merge order, grouped by repository; fork PRs
 never join a stack through their head branch name. Summaries come from PR
 descriptions; screenshots load through `GET /api/inbox/image`, an authenticated
@@ -143,6 +149,8 @@ repository (including private ones). Private PR content stays in the local serve
 ```toml
 [review]
 owners = ["example-org", "example-user"]
+all_owners = false
+exclude_owners = ["example-org"] # Applies when all_owners is true
 decision_command = ["/path/to/decision-hook", "--stdin"]
 ```
 
@@ -151,7 +159,9 @@ is an argv list executed without a shell. `POST /api/inbox/decision` sends one J
 object on stdin:
 `{"version":1,"decision":"hold","scope":"stack","repo":"example-org/example-repo","prs":[{"number":1,"url":"https://github.com/example-org/example-repo/pull/1","head_sha":"abc123"}],"note":"Please explain the migration"}`.
 PRs are in merge order. Before running the command, Decky re-queries only the
-answer's repository: owners outside `review.owners` get 403, and a changed stack
+answer's repository: owners outside `review.owners` get 403 by default. With
+`review.all_owners` enabled, any owner outside `review.exclude_owners` is allowed
+for decisions and attachments. A changed stack
 or head commit gets 409 (refresh and review again). The command has 30 seconds to exit successfully; failures
 return an error message. A timeout may have delivered the answer, so check the
 recipient before retrying. Without a command the endpoint returns 409. Decky does

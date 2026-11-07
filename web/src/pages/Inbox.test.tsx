@@ -13,7 +13,7 @@ it("loads and refreshes the inbox without requesting proxy-forbidden APIs", asyn
   vi.stubGlobal("fetch", vi.fn(async (url: string) => {
     requests.push(url);
     if (url !== "/api/inbox") return new Response(JSON.stringify({ message: "Forbidden" }), { status: 403 });
-    return new Response(JSON.stringify({ owners: [], stacks: [], notes: [], decision_enabled: false }));
+    return new Response(JSON.stringify({ owners: [], all_owners: false, stacks: [], notes: [], decision_enabled: false }));
   }));
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(<QueryClientProvider client={client}><App /></QueryClientProvider>);
@@ -21,5 +21,15 @@ it("loads and refreshes the inbox without requesting proxy-forbidden APIs", asyn
   expect(requests).toEqual(["/api/inbox"]);
   await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
   expect(requests).toEqual(["/api/inbox", "/api/inbox"]);
+  client.clear();
+});
+
+it("says no PRs were found instead of the setup hint when all owners are searched", async () => {
+  window.history.replaceState({}, "", "/inbox");
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ owners: [], all_owners: true, stacks: [], notes: [], decision_enabled: false }))));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={client}><App /></QueryClientProvider>);
+  expect(await screen.findByText("No open PRs were found.")).toBeInTheDocument();
+  expect(screen.queryByText(/Configure review.owners/)).not.toBeInTheDocument();
   client.clear();
 });
