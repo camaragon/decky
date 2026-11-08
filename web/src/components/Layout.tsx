@@ -43,8 +43,17 @@ export function Layout({
       )}
     >
       <aside className="flex flex-col border-r border-border bg-sidebar px-2 py-2">
-        <div className="mb-2 flex items-center justify-between gap-1">
-          {!collapsed ? <span className="text-sm font-bold tracking-tight">decky</span> : null}
+        <div className={cn("mb-2 flex items-center justify-between gap-1", collapsed && "flex-col")}>
+          <span className="flex items-center gap-1.5 text-sm font-bold tracking-tight">
+            <img
+              src="/favicon.svg"
+              alt={collapsed ? "Decky" : ""}
+              width={16}
+              height={16}
+              className="shrink-0 [color-scheme:light] dark:[color-scheme:dark]"
+            />
+            {!collapsed ? "decky" : null}
+          </span>
           <ThemeToggle />
           <Button
             type="button"
