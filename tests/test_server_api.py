@@ -31,14 +31,6 @@ def test_meta(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     assert res.json()["reviewConfigured"] is True
 
 
-def test_status_disabled(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        "decky.server.api.load_status",
-        lambda: {"disabled": True},
-    )
-    assert client.get("/api/status").json() == {"disabled": True}
-
-
 def test_table_review(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     row = {
         "number": 1,
@@ -159,7 +151,6 @@ def test_config_roundtrip(
         ("GET", "/api/config"),
         ("GET", "/api/meta"),
         ("GET", "/api/queue"),
-        ("GET", "/api/status"),
         ("GET", "/api/tables/review"),
         ("PUT", "/api/config/work_org"),
         ("DELETE", "/api/config/work_org"),
@@ -177,7 +168,6 @@ def test_foreign_host_rejected_before_work(client, monkeypatch, method, path) ->
 
     monkeypatch.setattr("decky.config.load_file", unexpected)
     monkeypatch.setattr("decky.server.api.load_queue", unexpected)
-    monkeypatch.setattr("decky.server.api.load_status", unexpected)
     monkeypatch.setattr("decky.server.views.github.load_pr_lists", unexpected)
     monkeypatch.setattr(pr_cmd, "open_review", unexpected)
     monkeypatch.setattr("decky.server.api.open_http_url", unexpected)

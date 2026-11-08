@@ -112,11 +112,6 @@ SETTINGS: dict[str, Setting] = {
             "DECKY_JIRA_BROWSE_URL",
             "Optional Jira issue URL template with {key} for queue Jira links",
         ),
-        Setting(
-            "status.command",
-            "DECKY_STATUS_COMMAND",
-            "Argv command that prints waiting/running JSON (optional)",
-        ),
         Setting("server.allowed_hosts", "DECKY_SERVER_ALLOWED_HOSTS", "Extra exact hostnames accepted behind an authenticated proxy", "[]", kind="list_str"),
         Setting(
             "server.host",
@@ -372,9 +367,6 @@ command = "your-review-agent {url}"
 [browser]
 command = "open -a Dia {url}"
 # command = "open {url}"
-
-# [status]
-# command = "your-status-command"
 
 # [server]
 # host = "127.0.0.1"

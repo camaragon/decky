@@ -134,7 +134,7 @@ more detail. Per-PR and whole-stack Merge/Hold buttons send an
 optional note through the decision hook; they stay disabled without a command.
 Delivery success or failure appears inline. Last answers stay in the browser tab
 for the session, keyed by PR commit. The inbox does not load dashboard buckets,
-configuration, queue, or status APIs.
+configuration or queue APIs.
 
 The review inbox API (`GET /api/inbox`) lists your authored open PRs by default in
 configured `review.owners` (GitHub search: `author:@me user:OWNER` per owner). An
@@ -209,7 +209,7 @@ allowed_hosts = ["review.example.com"]
 Restart the server after changing allowed hosts; an invalid entry stops the server
 from starting. An allowed proxy host can load the SPA, static assets, and these
 read APIs: `/api/meta`, `/api/config`, `/api/tables/review`, `/api/tables/team`,
-`/api/tables/mine`, `/api/queue`, `/api/status`, `/api/inbox`, and `/api/inbox/image`.
+`/api/tables/mine`, `/api/queue`, `/api/inbox`, and `/api/inbox/image`.
 Config command values are hidden because they can contain credentials. The issue
 URL template is hidden, and issue keys show without links, only when the template
 contains userinfo or a query string. Invalid
@@ -228,7 +228,6 @@ able to reach the proxy can read dashboard content and send merge/hold answers.
 The proxy must restrict clients before forwarding requests. Keep
 CORS disabled; the custom header must not be allowed cross-origin.
 
-Optional `status.command` prints JSON with `waiting` and `running` lists (`title` and `url` per item) for the waiting strip.
 
 Connect an MCP client:
 
@@ -270,7 +269,6 @@ Default file: `~/.config/decky/config.toml` (mode `600` on write).
 | `server.host`      | `DECKY_SERVER_HOST`      | Bind address (default `127.0.0.1`)                                       |
 | `server.port`      | `DECKY_SERVER_PORT`      | Listen port (default `8777`)                                             |
 | `server.log_level` | `DECKY_SERVER_LOG_LEVEL` | App log level (`debug` … `error`)                                        |
-| `status.command`   | `DECKY_STATUS_COMMAND`   | Optional argv printing waiting/running JSON                              |
 
 Example (also written by `decky config init`):
 
