@@ -140,9 +140,9 @@ stay disabled without a command. Keys: `J`/`K` move between cards, `M` merge,
 `H` hold, `N` note; inside a stack's PR row they answer only that PR.
 Stack-scoped keyboard Merge/Hold asks for confirmation; single-PR shortcuts and
 button clicks remain immediate. Both answer labels show "with note" when a note
-will be sent, even if the note field is collapsed. Delivery success or failure appears inline. Last answers stay in the browser tab
-for the session, keyed by PR commit. The inbox does not load dashboard buckets,
-configuration or queue APIs.
+will be sent, even if the note field is collapsed. Delivery success or failure
+appears inline. Last answers stay in the browser tab for the session, keyed by
+PR commit. The inbox does not load dashboard buckets, configuration or queue APIs.
 
 The review inbox API (`GET /api/inbox`) lists your authored open PRs by default in
 configured `review.owners` (GitHub search: `author:@me user:OWNER` per owner). An
@@ -160,13 +160,15 @@ GitHub-only endpoint for PR attachments and image files in the PR's own
 repository (including private ones). Private PR content stays in the local server.
 
 To show reviewer-written summaries and low/medium/high risk labels, opt into
-[`review.results_dir`](docs/review-results.md). Risk appears in the collapsed PR
-row; the expanded card shows what changed, why, what to check, reviewer, and
-generation time. An optional second opinion appears beside the first on wider
-screens and below it on phones, with its own risk and summary. A result for a
-different head SHA is labeled **Outdated result** in both views until an external
-producer replaces the file. Missing or invalid files leave the description
-summary available. Generate a result with:
+[`review.results_dir`](docs/review-results.md). Risk appears on the PR card;
+"Why · what to check" shows what changed, why, what to check, reviewer, and
+generation time. A stack header shows its members' worst primary risk plus a
+count of unreviewed members, or "No review yet" when none has a result. An
+optional second opinion appears beside the first on wider screens and below it on
+phones, with its own risk and summary. A result for a different head SHA is
+labeled **Outdated result** in both views until an external producer replaces the
+file. Missing or invalid files leave the description summary available. Generate a
+result with:
 
 ```sh
 decky review-result write owner/repo 123
