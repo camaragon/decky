@@ -6,6 +6,7 @@ import click
 
 from decky.commands.config import config_group
 from decky.commands.pr import pr
+from decky.commands.review_result import review_result
 from decky.commands.server import server_cmd
 
 
@@ -16,6 +17,7 @@ def cli() -> None:
 
 cli.add_command(config_group)
 cli.add_command(pr)
+cli.add_command(review_result)
 cli.add_command(server_cmd)
 
 
