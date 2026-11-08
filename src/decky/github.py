@@ -45,7 +45,6 @@ TRUNCATION_NOTES = (
 DETAIL_FIELDS = """
   url
   body
-  reviewDecision
   labels(first: 100) { pageInfo { hasNextPage } nodes { name } }
   latestOpinionatedReviews(first: 20) { pageInfo { hasNextPage } }"""
 
@@ -55,6 +54,10 @@ fragment PrFields on PullRequest {
   title%s
   isDraft
   updatedAt
+  createdAt
+  additions
+  deletions
+  reviewDecision
   author { login }
   repository { nameWithOwner }
   commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
@@ -168,6 +171,10 @@ def pr_from_node(node: dict[str, Any], details: bool = False) -> dict[str, Any]:
         "draft": bool(node.get("isDraft")),
         "author": (node.get("author") or {}).get("login") or "",
         "updated_at": node.get("updatedAt") or "",
+        "opened": node.get("createdAt") or "",
+        "additions": node.get("additions"),
+        "deletions": node.get("deletions"),
+        "review_decision": node.get("reviewDecision"),
         "review_requests_truncated": bool(
             ((node.get("reviewRequests") or {}).get("pageInfo") or {}).get(
                 "hasNextPage"
@@ -188,7 +195,6 @@ def pr_from_node(node: dict[str, Any], details: bool = False) -> dict[str, Any]:
             repo_name=name,
             url=node.get("url") or f"https://github.com/{slug}/pull/{node['number']}",
             body=node.get("body") or "",
-            review_decision=node.get("reviewDecision"),
             labels=[
                 label["name"] for label in (node.get("labels") or {}).get("nodes", [])
             ],

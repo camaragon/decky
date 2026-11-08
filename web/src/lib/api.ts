@@ -9,6 +9,9 @@ export type PrRow = {
   url: string;
   updated_at?: string;
   opened?: string;
+  additions?: number | null;
+  deletions?: number | null;
+  review_decision?: string | null;
   jira?: string[];
   reviewed?: boolean;
 };
@@ -123,6 +126,8 @@ export type InboxPr = PrRow & {
   head_sha: string;
   body: string;
   review_decision: string | null;
+  check_runs?: { name: string; status: string; conclusion: string | null; url: string | null }[];
+  commit_statuses?: { name: string; state: string; url: string | null }[];
   changed_files: number;
   files: { path: string; additions: number; deletions: number }[];
   image_urls: string[];
