@@ -152,7 +152,8 @@ export function InboxPage() {
           {stack.prs.length === 1 ? <>{form(stack, "pr")}{prContent(stack.prs[0])}</> : <>
             <div className="stack-header"><div><h3>Stack of {stack.prs.length} <span className="text-muted-foreground font-normal">· {stack.repo}</span></h3><div className="pr-facts">{(() => {
               const risks = stack.prs.flatMap(p => p.review_result ? [p.review_result.risk] : []);
-              return risks.length ? <RiskLabel risk={risks.includes("high") ? "high" : risks.includes("medium") ? "medium" : "low"} /> : <span className="fact">No review yet</span>;
+              const unreviewed = stack.prs.length - risks.length;
+              return risks.length ? <><RiskLabel risk={risks.includes("high") ? "high" : risks.includes("medium") ? "medium" : "low"} />{unreviewed ? <span className="fact">{unreviewed} unreviewed</span> : null}</> : <span className="fact">No review yet</span>;
             })()}<span className="fact">Checks {stack.prs.filter(p => p.checks === "pass").length}/{stack.prs.length} PRs</span><span className="fact">{stack.prs.filter(p => p.review_decision === "APPROVED").length}/{stack.prs.length} approved</span></div></div>{form(stack, "stack")}</div>
             <ol className="stack-rail">{stack.prs.map((pr, index) => <li key={pr.number}><span className="stack-number">{index + 1}</span>{prContent(pr)}<details className="pr-details"><summary>Answer only this PR</summary>{form({ repo: stack.repo, prs: [pr] }, "pr")}</details></li>)}</ol>
             <p className="text-xs text-muted-foreground">Merge order: {stack.prs.map(p => `#${p.number}`).join(" → ")}</p>

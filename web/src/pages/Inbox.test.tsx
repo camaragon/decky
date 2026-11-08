@@ -80,6 +80,23 @@ it.each([[false, "Ready to decide"], [true, "Not ready"]])("groups an unreviewed
   client.clear();
 });
 
+it("keeps the worst known stack risk and counts unreviewed members", async () => {
+  window.history.replaceState({}, "", "/inbox");
+  const member = (number: number, risk?: string) => ({
+    repo: "example/demo", number, title: `Mixed part ${number}`, checks: "pass", review_decision: "APPROVED", draft: false,
+    url: `https://example.com/pull/${number}`, head_sha: "e".repeat(40), body: "", changed_files: 0, files: [], image_urls: [],
+    ...(risk ? { review_result: { version: 1, head_sha: "e".repeat(40), risk, outdated: false, reviewer: "Primary reviewer", generated_at: "2026-11-07T12:00:00Z", summary: { what_changed: "x", why: "y", what_to_check: "z" } } } : {}),
+  });
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ owners: ["example"], all_owners: false, stacks: [{ repo: "example/demo", prs: [member(1, "low"), member(2), member(3)] }], notes: [], decision_enabled: false, review_results_enabled: false }))));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={client}><App /></QueryClientProvider>);
+  const header = (await screen.findByRole("heading", { name: "Mixed part 1" })).closest("article")!.querySelector(".stack-header")!;
+  expect(header).toHaveTextContent("Risk: low");
+  expect(header).toHaveTextContent("2 unreviewed");
+  expect(header).not.toHaveTextContent("No review yet");
+  client.clear();
+});
+
 it("scopes keyboard answers to the focused stack member or the whole stack", async () => {
   localStorage.setItem("decky.theme", "light");
   window.history.replaceState({}, "", "/inbox");
