@@ -85,6 +85,9 @@ def test_json_buckets_and_filters(monkeypatch, tmp_path, node, flags, keys, numb
             "review_decision": "APPROVED",
             "labels": ["bug"],
             "updated_at": "2026-01-01T00:00:00Z",
+            "opened": "",
+            "additions": None,
+            "deletions": None,
         }
 
 
@@ -153,7 +156,7 @@ def test_non_json_callers_skip_details(monkeypatch, tmp_path, node):
     monkeypatch.setattr(github, "run_gh", fetch)
     lists, notes = github.load_pr_lists()
     assert not any(notes.values()) and lists["watched"] == []
-    assert not {"body", "labels", "review_decision", "repo_owner"} & set(
+    assert not {"body", "labels", "repo_owner"} & set(
         lists["review"][0]
     )
 
