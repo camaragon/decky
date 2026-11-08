@@ -114,7 +114,11 @@ def meta(request: Request) -> dict:
         "reviewConfigured": _configured("review.command"),
         "queueConfigured": _configured("queue.command"),
         "statusConfigured": _configured("status.command"),
-        "jiraBrowseUrl": jira if local_host(request) and isinstance(jira, str) and jira.strip() else None,
+        "jiraBrowseUrl": jira
+        if isinstance(jira, str)
+        and jira.strip()
+        and (local_host(request) or not views.browse_url_has_credentials(jira))
+        else None,
     }
 
 

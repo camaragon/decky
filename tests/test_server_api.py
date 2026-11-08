@@ -251,6 +251,7 @@ def test_proxy_read_responses_hide_credentials(tmp_path, monkeypatch):
     assert proxy.get("/api/meta").json()["jiraBrowseUrl"] is None
     local = TestClient(app, base_url="http://127.0.0.1")
     assert secret in local.get("/api/config").text
+    assert secret in local.get("/api/meta").json()["jiraBrowseUrl"]
 
     def fail():
         raise click.ClickException(secret)
@@ -259,3 +260,14 @@ def test_proxy_read_responses_hide_credentials(tmp_path, monkeypatch):
     response = proxy.get("/api/queue")
     assert response.status_code == 422
     assert secret not in response.text
+
+
+def test_proxy_meta_returns_plain_issue_url_template(tmp_path, monkeypatch):
+    monkeypatch.setenv("DECKY_CONFIG", str(tmp_path / "config.toml"))
+    monkeypatch.setenv("DECKY_SERVER_ALLOWED_HOSTS", "review.example.com")
+    template = "https://tracker.example/browse/{key}"
+    monkeypatch.setenv("DECKY_JIRA_BROWSE_URL", template)
+    proxy = TestClient(create_app(static=None), base_url="https://review.example.com")
+    assert proxy.get("/api/meta").json()["jiraBrowseUrl"] == template
+    settings = {s["key"]: s for s in proxy.get("/api/config").json()["settings"]}
+    assert settings["jira.browse_url"]["value"] == template

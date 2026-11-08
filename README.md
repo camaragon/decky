@@ -208,21 +208,22 @@ Restart the server after changing allowed hosts; an invalid entry stops the serv
 from starting. An allowed proxy host can load the SPA, static assets, and these
 read APIs: `/api/meta`, `/api/config`, `/api/tables/review`, `/api/tables/team`,
 `/api/tables/mine`, `/api/queue`, `/api/status`, `/api/inbox`, and `/api/inbox/image`.
-Config command values and the issue URL template are hidden because they can
-contain credentials; issue keys remain visible without template links. Invalid
+Config command values are hidden because they can contain credentials. The issue
+URL template is hidden, and issue keys show without links, only when the template
+contains userinfo or a query string. Invalid
 config values and backend error details are also hidden through the proxy.
 Other API routes and `/mcp` return 403. Config edits, review launch, and opening
 URLs require local access; blocked actions show a message in the dashboard.
-The existing `POST /api/inbox/decision` remains available, but requires an exact
-same-origin `Origin`, `X-Requested-With: fetch`, and, when present,
+The existing `POST /api/inbox/decision` remains available, but requires an
+`Origin` whose host and port match the request Host (the scheme is ignored, so
+TLS termination at the proxy is fine), `X-Requested-With: fetch`, and, when present,
 `Sec-Fetch-Site: same-origin`. Loopback behavior is unchanged.
 The proxy must preserve the incoming public Host header (for nginx,
 `proxy_set_header Host $host;`). A proxy that rewrites Host to the loopback
 upstream (such as nginx's default `Host: 127.0.0.1:8777`) grants every proxied
 request unrestricted local access. Host filtering is not authentication: everyone
 able to reach the proxy can read dashboard content and send merge/hold answers.
-The proxy must restrict clients before forwarding requests and preserve the
-external scheme through trusted forwarding headers for the Origin check. Keep
+The proxy must restrict clients before forwarding requests. Keep
 CORS disabled; the custom header must not be allowed cross-origin.
 
 Optional `status.command` prints JSON with `waiting` and `running` lists (`title` and `url` per item) for the waiting strip.

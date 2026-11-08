@@ -163,7 +163,7 @@ def test_proxy_dashboard_reads_and_write_boundary(setup, monkeypatch, tmp_path):
         {},
         {**headers, "Origin": "null"},
         {**headers, "Origin": "http://foreign.example"},
-        {**headers, "Origin": "https://review.example.com"},
+        {**headers, "Origin": "https://foreign.example"},
         {**headers, "Origin": "http://review.example.com:8080"},
         {**headers, "Sec-Fetch-Site": "same-site"},
         {**headers, "Sec-Fetch-Site": "cross-site"},
@@ -173,6 +173,9 @@ def test_proxy_dashboard_reads_and_write_boundary(setup, monkeypatch, tmp_path):
     command.assert_not_called()
     assert proxy.post("/api/inbox/decision", json=answer, headers=headers).status_code == 200
     assert command.call_count == 1
+    tls = {**headers, "Origin": "https://review.example.com"}
+    assert proxy.post("/api/inbox/decision", json=answer, headers=tls).status_code == 200
+    assert command.call_count == 2
     local = TestClient(app, base_url="http://127.0.0.1")
     assert local.put("/api/config/review.command", json={"value": "agent {url}"}).status_code == 200
     assert local.post("/api/open-url", json={"url": "https://example.com"}).status_code == 200

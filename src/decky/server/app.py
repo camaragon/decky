@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import click
 
@@ -71,8 +72,12 @@ def create_app(
                 return JSONResponse({"message": "host not allowed"}, status_code=421)
             return await call_next(request)
         if request.method == "POST" and path == "/api/inbox/decision":
+            origins = request.headers.getlist("origin")
+            origin = urlsplit(origins[0]) if len(origins) == 1 else None
             if (
-                request.headers.getlist("origin") != [str(request.base_url).rstrip("/")]
+                origin is None
+                or origin.scheme not in {"http", "https"}
+                or origin.netloc.lower() != request.headers.get("host", "").lower()
                 or request.headers.get("sec-fetch-site") not in {None, "same-origin"}
                 or request.headers.get("x-requested-with") != "fetch"
             ):

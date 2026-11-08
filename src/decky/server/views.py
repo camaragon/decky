@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from typing import Any
+from urllib.parse import urlsplit
 
 import click
 
@@ -49,6 +50,14 @@ def _raw_value(s: config.Setting) -> tuple[Any, str]:
         return None, "file"
 
 
+def browse_url_has_credentials(value: Any) -> bool:
+    """Return whether an issue URL template carries userinfo or a query string."""
+    if not isinstance(value, str):
+        return True
+    parts = urlsplit(value.strip())
+    return parts.scheme not in {"http", "https"} or "@" in parts.netloc or bool(parts.query)
+
+
 def config_settings(*, redact: bool = False) -> list[dict]:
     """Return settings, hiding credential-bearing and invalid values for proxy reads."""
     out: list[dict] = []
@@ -61,7 +70,10 @@ def config_settings(*, redact: bool = False) -> list[dict]:
             value, source = _raw_value(s)
             error = e.message
         # Commands and URL templates can embed credentials, including invalid raw values.
-        if redact and (key.endswith((".command", "_command")) or key == "jira.browse_url"):
+        if redact and (
+            key.endswith((".command", "_command"))
+            or (key == "jira.browse_url" and value is not None and browse_url_has_credentials(value))
+        ):
             value = "[hidden through an allowed proxy host]" if value is not None else None
         if redact and error:
             value, error = None, "Invalid setting; inspect locally."
