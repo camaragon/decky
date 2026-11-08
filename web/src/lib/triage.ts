@@ -7,6 +7,6 @@ export function needsAttention(pr: InboxPr) {
 
 export function triageGroup(stack: InboxStack) {
   if (stack.prs.some(needsAttention)) return "Needs attention";
-  if (stack.prs.some(pr => pr.draft || pr.checks === "pending")) return "Not ready";
+  if (stack.prs.some(pr => pr.draft || pr.checks === "pending" || !pr.review_result)) return "Not ready";
   return "Ready to decide";
 }
