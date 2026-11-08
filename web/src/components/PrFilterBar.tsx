@@ -15,7 +15,7 @@ export function PrFilterBar({
   onReset: () => void;
 }) {
   return (
-    <div className="sticky top-0 z-10 -mx-4 mb-4 flex flex-wrap items-end gap-2 border-b border-border bg-background/95 px-4 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+    <div className="pr-filter-bar">
       <FilterSelect
         label="Checks"
         value={filters.checks}
@@ -31,6 +31,8 @@ export function PrFilterBar({
       <label className="flex flex-col gap-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
         Repo
         <Input
+          name="repo"
+          autoComplete="off"
           className="w-36"
           value={filters.repo}
           onChange={(e) => onChange({ ...filters, repo: e.target.value })}
@@ -53,6 +55,8 @@ export function PrFilterBar({
       <label className="flex flex-col gap-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
         Search
         <Input
+          name="search"
+          autoComplete="off"
           className="w-44"
           value={filters.search}
           onChange={(e) => onChange({ ...filters, search: e.target.value })}

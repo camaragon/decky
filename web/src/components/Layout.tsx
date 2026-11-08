@@ -18,7 +18,7 @@ export function Layout({ reviewCount, mineCount, inboxCount, attentionCount = 0,
 }) {
   const location = useLocation();
   const counts: Record<string, number | undefined> = {
-    "/inbox": inboxCount, "/reviews": reviewCount, "/prs": mineCount, "/config": configCount,
+    "/inbox": inboxCount, "/reviews": reviewCount, "/prs": mineCount, "/config": configCount ? configCount : undefined,
   };
   return (
     <div className="layout min-h-screen bg-background">
@@ -36,7 +36,7 @@ export function Layout({ reviewCount, mineCount, inboxCount, attentionCount = 0,
               <span className="nav-label">{label}</span>
               <span className="nav-counts">
                 {to === "/inbox" && attentionCount > 0 ? <span className="count count-danger" title="Needs attention" aria-label={`${attentionCount} need attention`}>{attentionCount}</span> : null}
-                {counts[to] !== undefined ? <span className={cn("count", to === "/reviews" && "count-blue", to === "/config" && !!configCount && "count-amber")} aria-label={`${counts[to]} ${to === "/reviews" ? "requested from you" : to === "/config" ? "invalid settings" : "total"}`}>{counts[to]}</span> : null}
+                {counts[to] !== undefined ? <span className={cn("count", to === "/reviews" && "count-blue", to === "/config" && "count-amber")} aria-label={`${counts[to]} ${to === "/reviews" ? "requested from you" : to === "/config" ? "invalid settings" : "total"}`}>{counts[to]}</span> : null}
                 {to === "/reviews" && teamCount > 0 ? <span className="count" title="Via team" aria-label={`${teamCount} via team`}>{teamCount}</span> : null}
               </span>
             </Link>;
