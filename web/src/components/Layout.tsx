@@ -13,7 +13,7 @@ const links = [
 ];
 
 export function Layout({ reviewCount, mineCount, inboxCount, attentionCount = 0, teamCount = 0, configCount, children }: {
-  reviewCount: number; mineCount: number; inboxCount?: number; attentionCount?: number;
+  reviewCount?: number; mineCount?: number; inboxCount?: number; attentionCount?: number;
   teamCount?: number; configCount?: number; children: ReactNode;
 }) {
   const location = useLocation();

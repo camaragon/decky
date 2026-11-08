@@ -48,9 +48,9 @@ function Shell() {
   const reviewFilters = loadFilters("reviews-page");
   const mineFilters = loadFilters("mine-page");
 
-  let reviewCount = 0;
-  let mineCount = 0;
-  let teamCount = 0;
+  let reviewCount: number | undefined;
+  let mineCount: number | undefined;
+  let teamCount: number | undefined;
   if (useQueueSource && queueActive(queue.data)) {
     const direct = queue.data.direct.map((item) => queueToRow(item, true));
     const teamRows = queue.data.team.map((item) => queueToRow(item, true));
@@ -59,9 +59,9 @@ function Shell() {
     teamCount = filterRows(teamRows, reviewFilters, hideAuthors).length;
     mineCount = filterRows(mineRows, mineFilters, hideAuthors).length;
   } else if (!useQueueSource) {
-    reviewCount = filterRows(review.data?.rows ?? [], reviewFilters, hideAuthors).length;
-    teamCount = filterRows(team.data?.rows ?? [], reviewFilters, hideAuthors).length;
-    mineCount = filterRows(mine.data?.rows ?? [], mineFilters, hideAuthors).length;
+    if (review.data) reviewCount = filterRows(review.data.rows, reviewFilters, hideAuthors).length;
+    if (team.data) teamCount = filterRows(team.data.rows, reviewFilters, hideAuthors).length;
+    if (mine.data) mineCount = filterRows(mine.data.rows, mineFilters, hideAuthors).length;
   }
 
   return (
