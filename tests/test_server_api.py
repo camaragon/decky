@@ -110,6 +110,20 @@ def test_spa_missing_503(client: TestClient) -> None:
     assert "pnpm -C web" in res.text
 
 
+def test_spa_icon_assets(tmp_path: Path) -> None:
+    import shutil
+
+    public = Path(__file__).parents[1] / "web" / "public"
+    shutil.copytree(public, tmp_path, dirs_exist_ok=True)
+    (tmp_path / "index.html").write_text("<html>decky</html>")
+    client = TestClient(create_app(static=tmp_path, host="127.0.0.1"))
+
+    for name in ("favicon.svg", "site.webmanifest"):
+        response = client.get(f"/{name}")
+        assert response.status_code == 200
+        assert response.content == (public / name).read_bytes()
+
+
 def test_dev_no_spa(client: TestClient) -> None:
     dev = TestClient(create_app(static=None, host="127.0.0.1"))
     assert dev.get("/").status_code == 404
