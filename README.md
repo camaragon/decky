@@ -228,7 +228,6 @@ able to reach the proxy can read dashboard content and send merge/hold answers.
 The proxy must restrict clients before forwarding requests. Keep
 CORS disabled; the custom header must not be allowed cross-origin.
 
-
 Connect an MCP client:
 
 ```bash
