@@ -41,8 +41,8 @@ function AnswerForm({ stack, scope, enabled, onAnswered }: {
   }
   return <div className="answer-form">
     <div className="answer-buttons">
-      <Button data-answer="m" disabled={!enabled || pending} onClick={() => answer("merge")}>{scope === "stack" ? `Merge all ${stack.prs.length}` : "Merge"} <kbd>M</kbd></Button>
-      <Button data-answer="h" variant="outline" disabled={!enabled || pending} onClick={() => answer("hold")}>Hold{scope === "stack" ? " stack" : ""}{note ? " with note" : ""} <kbd>H</kbd></Button>
+      <Button data-answer="m" data-confirm={scope === "stack" ? `Merge all ${stack.prs.length} PRs?` : undefined} disabled={!enabled || pending} onClick={() => answer("merge")}>{scope === "stack" ? `Merge all ${stack.prs.length}` : "Merge"}{note ? " with note" : ""} <kbd>M</kbd></Button>
+      <Button data-answer="h" data-confirm={scope === "stack" ? `Hold all ${stack.prs.length} PRs?` : undefined} variant="outline" disabled={!enabled || pending} onClick={() => answer("hold")}>Hold{scope === "stack" ? " stack" : ""}{note ? " with note" : ""} <kbd>H</kbd></Button>
       <Button data-answer="n" variant="ghost" aria-label="Add a note" aria-expanded={showNote} onClick={() => setShowNote(!showNote)}><MessageSquare aria-hidden="true" size={15} /><kbd>N</kbd></Button>
     </div>
     {showNote ? <label className="note-bar">Optional note for {scope === "stack" ? "whole stack" : `PR #${stack.prs[0].number}`}
@@ -111,6 +111,10 @@ export function InboxPage() {
       cards[(cards.indexOf(card) + (key === "j" ? 1 : cards.length - 1)) % cards.length]?.focus();
     } else if (["m", "h", "n"].includes(key)) {
       const button = ((event.target as HTMLElement).closest(".answer-form, .stack-rail > li") ?? card).querySelector<HTMLButtonElement>(`[data-answer="${key}"]`);
+      if (button?.dataset.confirm && !button.disabled && !window.confirm(button.dataset.confirm)) {
+        event.preventDefault();
+        return;
+      }
       const details = button?.closest("details");
       if (details) details.open = true;
       button?.click();

@@ -137,7 +137,10 @@ stack of more than one PR lists its PRs in a numbered merge-order rail with
 "Merge all N" / "Hold stack" plus "Answer only this PR" per PR. Answers go
 through the decision hook, with an optional note box shown on demand; buttons
 stay disabled without a command. Keys: `J`/`K` move between cards, `M` merge,
-`H` hold, `N` note; inside a stack's PR row they answer only that PR. Delivery success or failure appears inline. Last answers stay in the browser tab
+`H` hold, `N` note; inside a stack's PR row they answer only that PR.
+Stack-scoped keyboard Merge/Hold asks for confirmation; single-PR shortcuts and
+button clicks remain immediate. Both answer labels show "with note" when a note
+will be sent, even if the note field is collapsed. Delivery success or failure appears inline. Last answers stay in the browser tab
 for the session, keyed by PR commit. The inbox does not load dashboard buckets,
 configuration or queue APIs.
 

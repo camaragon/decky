@@ -1,10 +1,10 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "../App";
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); window.history.replaceState({}, "", "/"); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); window.history.replaceState({}, "", "/"); });
 
 it("loads and refreshes the inbox without requesting proxy-forbidden APIs", async () => {
   localStorage.setItem("decky.theme", "light");
@@ -81,12 +81,14 @@ it.each([[false, "Ready to decide"], [true, "Not ready"]])("groups an unreviewed
 });
 
 it("scopes keyboard answers to the focused stack member or the whole stack", async () => {
+  localStorage.setItem("decky.theme", "light");
   window.history.replaceState({}, "", "/inbox");
   const member = (number: number, sha: string) => ({
     repo: "example/demo", number, title: `Stack part ${number}`, checks: "pass", review_decision: "APPROVED", draft: false,
     url: `https://example.com/pull/${number}`, head_sha: sha.repeat(40), body: "", changed_files: 0, files: [], image_urls: [],
   });
-  const posts: { scope: string; numbers: number[] }[] = [];
+  const posts: { scope: string; numbers: number[]; note: string }[] = [];
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     if (url === "/api/inbox/decision") { posts.push(JSON.parse(String(init?.body))); return new Response(JSON.stringify({ message: "Answer delivered" })); }
     return new Response(JSON.stringify({ owners: ["example"], all_owners: false, stacks: [{ repo: "example/demo", prs: [member(1, "c"), member(2, "d")] }], notes: [], decision_enabled: true, review_results_enabled: false }));
@@ -100,9 +102,22 @@ it("scopes keyboard answers to the focused stack member or the whole stack", asy
   await userEvent.keyboard("n");
   expect(summary.closest("details")!.open).toBe(true);
   expect(screen.getByLabelText("Optional note for PR #2")).toBeVisible();
+  await userEvent.type(screen.getByLabelText("Optional note for PR #2"), "Check the export");
+  await userEvent.click(within(summary.closest("details")!).getByRole("button", { name: "Add a note" }));
+  expect(screen.queryByLabelText("Optional note for PR #2")).not.toBeInTheDocument();
+  expect(within(summary.closest("details")!).getByRole("button", { name: /Merge with note/ })).toBeVisible();
   summary.focus();
   await userEvent.keyboard("m");
+  await vi.waitFor(() => expect(posts).toHaveLength(1));
+  expect(confirm).not.toHaveBeenCalled();
+  expect(posts[0].note).toBe("Check the export");
   card.focus();
+  await userEvent.keyboard("h");
+  expect(confirm).toHaveBeenLastCalledWith("Hold all 2 PRs?");
+  await userEvent.keyboard("m");
+  expect(confirm).toHaveBeenLastCalledWith("Merge all 2 PRs?");
+  expect(posts).toHaveLength(1);
+  confirm.mockReturnValue(true);
   await userEvent.keyboard("h");
   await vi.waitFor(() => expect(posts).toHaveLength(2));
   expect(posts.map(p => [p.scope, p.numbers])).toEqual([["pr", [2]], ["stack", [1, 2]]]);
