@@ -1,10 +1,10 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "../App";
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); window.history.replaceState({}, "", "/"); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); window.history.replaceState({}, "", "/"); });
 
 it("loads and refreshes the inbox without requesting proxy-forbidden APIs", async () => {
   localStorage.setItem("decky.theme", "light");
@@ -34,36 +34,6 @@ it("says no PRs were found instead of the setup hint when all owners are searche
   client.clear();
 });
 
-it("starts stacks and PR details collapsed and expands them on click", async () => {
-  window.history.replaceState({}, "", "/inbox");
-  const pr = { repo: "example/demo", number: 101, title: "Improve navigation", checks: "fail", review_decision: "CHANGES_REQUESTED", draft: true, url: "https://example.com/pull/101", head_sha: "demo", body: "Example description", changed_files: 0, files: [], image_urls: [] };
-  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ owners: ["example"], all_owners: false, stacks: [{ repo: pr.repo, prs: [pr, { ...pr, number: 102, title: "Update copy", checks: "pass", review_decision: "APPROVED", draft: false }] }], notes: [], decision_enabled: true }))));
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(<QueryClientProvider client={client}><App /></QueryClientProvider>);
-  const stackSummary = await screen.findByText(/2 PR stack/);
-  const stack = stackSummary.closest("details")!;
-  const heading = screen.getByRole("heading", { name: /#101 Improve navigation/, hidden: true });
-  const details = heading.closest("details")!;
-  const secondDetails = screen.getByRole("heading", { name: /#102 Update copy/, hidden: true }).closest("details")!;
-  expect(stack).not.toHaveAttribute("open");
-  expect(details).not.toHaveAttribute("open");
-  expect(secondDetails).not.toHaveAttribute("open");
-  await userEvent.click(stackSummary);
-  expect(stack).toHaveAttribute("open");
-  expect(details).not.toHaveAttribute("open");
-  const row = heading.closest("summary")!;
-  expect(row).toHaveTextContent("Checks: fail");
-  expect(row).toHaveTextContent("CHANGES REQUESTED");
-  expect(row).toHaveTextContent("Draft");
-  await userEvent.click(heading);
-  expect(details).toHaveAttribute("open");
-  expect(screen.getByRole("textbox", { name: "Optional note for PR #101" })).toBeVisible();
-  expect(secondDetails).not.toHaveAttribute("open");
-  await userEvent.click(heading);
-  expect(details).not.toHaveAttribute("open");
-  client.clear();
-});
-
 it.each([false, true])("shows local risk in the row and both opinions in the expanded card (outdated: %s)", async outdated => {
   window.history.replaceState({}, "", "/inbox");
   const pr = {
@@ -80,18 +50,93 @@ it.each([false, true])("shows local risk in the row and both opinions in the exp
   vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ owners: ["example"], all_owners: false, stacks: [{ repo: pr.repo, prs: [pr] }], notes: [], decision_enabled: false }))));
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(<QueryClientProvider client={client}><App /></QueryClientProvider>);
-  await userEvent.click(await screen.findByText(/Single PR/));
-  const heading = screen.getByRole("heading", { name: /#101 Add report exports/ });
-  const row = heading.closest("summary")!;
-  expect(row).toHaveTextContent("Risk: medium");
-  expect(row.textContent?.includes("Outdated result")).toBe(outdated);
-  expect(screen.getByText("Add an export button.")).not.toBeVisible();
-  await userEvent.click(heading);
-  for (const text of ["Add an export button.", "Save reports locally.", "Try an empty report.", "Second reviewer", "Risk: high", "Check exported fields. <script>example</script>"]) {
+  const heading = await screen.findByRole("heading", { name: "Add report exports" });
+  const card = heading.closest("article")!;
+  expect(card).toHaveTextContent("Risk: medium");
+  expect(card.textContent?.includes("Outdated result")).toBe(outdated);
+  expect(screen.getAllByText("Add an export button.")[0]).toBeVisible();
+  await userEvent.click(screen.getByText(/Why · what to check/));
+  for (const text of ["Save reports locally.", "Try an empty report.", "Second reviewer", "Risk: high", "Check exported fields. <script>example</script>"]) {
     expect(screen.getByText(text)).toBeVisible();
   }
   expect(screen.queryByText(/the PR head has changed/) !== null).toBe(outdated);
   expect(document.querySelector("section[aria-label='Review summary'] script")).toBeNull();
   expect(screen.queryByText("Description fallback")).not.toBeVisible();
+  client.clear();
+});
+
+it.each([[false, "Ready to decide"], [true, "Not ready"]])("groups an unreviewed approved PR by whether review results are enabled (%s)", async (enabled, group) => {
+  window.history.replaceState({}, "", "/inbox");
+  const pr = {
+    repo: "example/demo", number: 102, title: "Tidy report headers", checks: "pass",
+    review_decision: "APPROVED", draft: false, url: "https://example.com/pull/102",
+    head_sha: "b".repeat(40), body: "", changed_files: 0, files: [], image_urls: [],
+  };
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ owners: ["example"], all_owners: false, stacks: [{ repo: pr.repo, prs: [pr] }], notes: [], decision_enabled: false, review_results_enabled: enabled }))));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={client}><App /></QueryClientProvider>);
+  const heading = await screen.findByRole("heading", { name: "Tidy report headers" });
+  expect(heading.closest("section")!.querySelector("h2")).toHaveTextContent(group);
+  client.clear();
+});
+
+it("keeps the worst known stack risk and counts unreviewed members", async () => {
+  window.history.replaceState({}, "", "/inbox");
+  const member = (number: number, risk?: string) => ({
+    repo: "example/demo", number, title: `Mixed part ${number}`, checks: "pass", review_decision: "APPROVED", draft: false,
+    url: `https://example.com/pull/${number}`, head_sha: "e".repeat(40), body: "", changed_files: 0, files: [], image_urls: [],
+    ...(risk ? { review_result: { version: 1, head_sha: "e".repeat(40), risk, outdated: false, reviewer: "Primary reviewer", generated_at: "2026-11-07T12:00:00Z", summary: { what_changed: "x", why: "y", what_to_check: "z" } } } : {}),
+  });
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ owners: ["example"], all_owners: false, stacks: [{ repo: "example/demo", prs: [member(1, "low"), member(2), member(3)] }], notes: [], decision_enabled: false, review_results_enabled: false }))));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={client}><App /></QueryClientProvider>);
+  const header = (await screen.findByRole("heading", { name: "Mixed part 1" })).closest("article")!.querySelector(".stack-header")!;
+  expect(header).toHaveTextContent("Risk: low");
+  expect(header).toHaveTextContent("2 unreviewed");
+  expect(header).not.toHaveTextContent("No review yet");
+  client.clear();
+});
+
+it("scopes keyboard answers to the focused stack member or the whole stack", async () => {
+  localStorage.setItem("decky.theme", "light");
+  window.history.replaceState({}, "", "/inbox");
+  const member = (number: number, sha: string) => ({
+    repo: "example/demo", number, title: `Stack part ${number}`, checks: "pass", review_decision: "APPROVED", draft: false,
+    url: `https://example.com/pull/${number}`, head_sha: sha.repeat(40), body: "", changed_files: 0, files: [], image_urls: [],
+  });
+  const posts: { scope: string; numbers: number[]; note: string }[] = [];
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+  vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === "/api/inbox/decision") { posts.push(JSON.parse(String(init?.body))); return new Response(JSON.stringify({ message: "Answer delivered" })); }
+    return new Response(JSON.stringify({ owners: ["example"], all_owners: false, stacks: [{ repo: "example/demo", prs: [member(1, "c"), member(2, "d")] }], notes: [], decision_enabled: true, review_results_enabled: false }));
+  }));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={client}><App /></QueryClientProvider>);
+  const card = (await screen.findByRole("heading", { name: "Stack part 2" })).closest("article")!;
+  expect(card.querySelector(".stack-header")).toHaveTextContent("No review yet");
+  const summary = screen.getAllByText("Answer only this PR")[1];
+  summary.focus();
+  await userEvent.keyboard("n");
+  expect(summary.closest("details")!.open).toBe(true);
+  expect(screen.getByLabelText("Optional note for PR #2")).toBeVisible();
+  await userEvent.type(screen.getByLabelText("Optional note for PR #2"), "Check the export");
+  await userEvent.click(within(summary.closest("details")!).getByRole("button", { name: "Add a note" }));
+  expect(screen.queryByLabelText("Optional note for PR #2")).not.toBeInTheDocument();
+  expect(within(summary.closest("details")!).getByRole("button", { name: /Merge with note/ })).toBeVisible();
+  summary.focus();
+  await userEvent.keyboard("m");
+  await vi.waitFor(() => expect(posts).toHaveLength(1));
+  expect(confirm).not.toHaveBeenCalled();
+  expect(posts[0].note).toBe("Check the export");
+  card.focus();
+  await userEvent.keyboard("h");
+  expect(confirm).toHaveBeenLastCalledWith("Hold all 2 PRs?");
+  await userEvent.keyboard("m");
+  expect(confirm).toHaveBeenLastCalledWith("Merge all 2 PRs?");
+  expect(posts).toHaveLength(1);
+  confirm.mockReturnValue(true);
+  await userEvent.keyboard("h");
+  await vi.waitFor(() => expect(posts).toHaveLength(2));
+  expect(posts.map(p => [p.scope, p.numbers])).toEqual([["pr", [2]], ["stack", [1, 2]]]);
   client.clear();
 });

@@ -125,17 +125,24 @@ decky server --no-open --dev               # API only; use pnpm -C web dev for t
 
 The **Review inbox** is the landing page (`/`, also `/inbox`) and a phone-friendly view of your open PRs.
 The other pages are Reviews (`/reviews`), My PRs (`/prs`), and Config (`/config`); press `t` to cycle through them in that order.
-It fills the page width, groups stacks by repository, and numbers PRs in merge order.
-Stacks and PRs start collapsed for quick scanning: a stack row counts PRs with
-failing checks, requested changes, or pending checks, and each PR row shows check
-and review status, draft state, and any answer already sent. Expand a PR for a
-plain-text summary from its description (or an optional local review result), changed-file counts, GitHub screenshot
-thumbnails, and links to the PR and diff; expand the description or file list for
-more detail. Per-PR and whole-stack Merge/Hold buttons send an
-optional note through the decision hook; they stay disabled without a command.
-Delivery success or failure appears inline. Last answers stay in the browser tab
-for the session, keyed by PR commit. The inbox does not load dashboard buckets,
-configuration or queue APIs.
+It sorts one card per decision into Needs attention (failing checks, requested
+changes, high or outdated review risk), Not ready (draft, pending checks, or no
+review result when `review.results_dir` is set), and Ready to decide, worst first;
+filter buttons narrow the list.
+A card shows risk, passing/total checks with failing check names, review decision
+and approvals, size, author, ages, a summary line, and a GitHub link without
+expanding. "Why · what to check" unfolds the review result, description, changed
+files, and GitHub screenshot thumbnails in place. A single PR has Merge/Hold; a
+stack of more than one PR lists its PRs in a numbered merge-order rail with
+"Merge all N" / "Hold stack" plus "Answer only this PR" per PR. Answers go
+through the decision hook, with an optional note box shown on demand; buttons
+stay disabled without a command. Keys: `J`/`K` move between cards, `M` merge,
+`H` hold, `N` note; inside a stack's PR row they answer only that PR.
+Stack-scoped keyboard Merge/Hold asks for confirmation; single-PR shortcuts and
+button clicks remain immediate. Both answer labels show "with note" when a note
+will be sent, even if the note field is collapsed. Delivery success or failure
+appears inline. Last answers stay in the browser tab for the session, keyed by
+PR commit. The inbox does not load dashboard buckets, configuration or queue APIs.
 
 The review inbox API (`GET /api/inbox`) lists your authored open PRs by default in
 configured `review.owners` (GitHub search: `author:@me user:OWNER` per owner). An
@@ -153,13 +160,15 @@ GitHub-only endpoint for PR attachments and image files in the PR's own
 repository (including private ones). Private PR content stays in the local server.
 
 To show reviewer-written summaries and low/medium/high risk labels, opt into
-[`review.results_dir`](docs/review-results.md). Risk appears in the collapsed PR
-row; the expanded card shows what changed, why, what to check, reviewer, and
-generation time. An optional second opinion appears beside the first on wider
-screens and below it on phones, with its own risk and summary. A result for a
-different head SHA is labeled **Outdated result** in both views until an external
-producer replaces the file. Missing or invalid files leave the description
-summary available. Generate a result with:
+[`review.results_dir`](docs/review-results.md). Risk appears on the PR card;
+"Why · what to check" shows what changed, why, what to check, reviewer, and
+generation time. A stack header shows its members' worst primary risk plus a
+count of unreviewed members, or "No review yet" when none has a result. An
+optional second opinion appears beside the first on wider screens and below it on
+phones, with its own risk and summary. A result for a different head SHA is
+labeled **Outdated result** in both views until an external producer replaces the
+file. Missing or invalid files leave the description summary available. Generate a
+result with:
 
 ```sh
 decky review-result write owner/repo 123

@@ -82,3 +82,51 @@ button:disabled { cursor: default; }
   .nav-counts { position: absolute; top: 0; left: 52%; gap: 2px; }
   .count { min-width: 16px; height: 16px; padding: 0 4px; font-size: 10px; }
 }
+
+.page-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 16px; }
+.page-header h1 { font-size: 24px; font-weight: 650; letter-spacing: -.025em; }
+.page-header p { margin-top: 4px; color: var(--muted-foreground); font-size: 13px; }
+.inbox { overflow-wrap: anywhere; }
+.inbox a { display: inline-flex; align-items: center; gap: 4px; color: var(--primary); text-decoration: underline; text-underline-offset: 3px; }
+.triage-heading { display: flex; align-items: center; gap: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted-foreground); }
+.triage-filters { display: flex; flex-wrap: wrap; gap: 6px; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
+.triage-filters button { display: flex; align-items: center; gap: 6px; min-height: 40px; border-radius: 7px; padding: 6px 10px; color: var(--muted-foreground); }
+.triage-filters button[aria-pressed="true"] { background: var(--sidebar-accent); color: var(--primary); }
+.triage-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px; box-shadow: 0 4px 16px #00000008; }
+.triage-card:focus-within { border-color: var(--primary); }
+.pr-identity { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; font-size: 11px; color: var(--muted-foreground); }
+.author-avatar { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--muted); font-size: 9px; font-weight: 600; }
+.pr-title { font-size: 16px; font-weight: 600; margin: 6px 0 10px; }
+.pr-facts { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+.fact { display: inline-flex; padding: 3px 7px; border: 1px solid var(--border); border-radius: 5px; font-size: 11px; }
+.size-stat { font: 11px ui-monospace, monospace; white-space: nowrap; }
+.pr-summary { margin: 10px 0; font-size: 13px; line-height: 1.6; }
+.pr-details { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--border); }
+.pr-details summary { cursor: pointer; min-height: 36px; padding-block: 8px; color: var(--muted-foreground); font-size: 12px; }
+.answer-form { float: right; margin: 0 0 8px 16px; max-width: 100%; }
+.answer-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+.answer-buttons > button { min-height: 40px; }
+.note-bar { display: block; margin-top: 8px; font-size: 11px; color: var(--muted-foreground); }
+.note-bar input { display: block; margin-top: 4px; width: 100%; padding: 8px; border: 1px solid var(--input); border-radius: 6px; background: var(--background); font-size: 16px; color: var(--foreground); }
+kbd { font: 10px ui-monospace, monospace; opacity: .65; border: 1px solid currentColor; border-radius: 3px; padding: 0 3px; }
+.keyboard-hints { color: var(--muted-foreground); font-size: 11px; }
+.stack-card { border-color: color-mix(in srgb, var(--stack) 40%, var(--border)); }
+.stack-header { display: flex; justify-content: space-between; gap: 12px; }
+.stack-header h3 { color: var(--stack); font-size: 14px; font-weight: 600; }
+.stack-rail { padding-left: 30px; margin: 18px 0 10px 12px; border-left: 2px solid color-mix(in srgb, var(--stack) 35%, var(--border)); }
+.stack-rail > li { position: relative; padding: 0 0 18px; }
+.stack-rail > li:last-child { padding-bottom: 0; }
+.stack-number { position: absolute; top: 0; left: -43px; width: 24px; height: 24px; border-radius: 50%; text-align: center; line-height: 22px; color: var(--stack); background: var(--card); border: 1px solid var(--stack); font-size: 11px; }
+.pr-details .answer-form { float: none; margin: 4px 0; }
+@media (max-width: 700px) {
+  .page-header { padding-right: 30px; align-items: start; }
+  .page-header > button { margin-top: 6px; }
+  .page-header p { max-width: 250px; }
+  .triage-card { padding: 14px; display: flex; flex-direction: column; }
+  .triage-card > .answer-form { order: 5; float: none; margin: 12px 0 0; }
+  .answer-buttons > button:not(:last-child) { flex: 1; }
+  .stack-header { flex-direction: column; }
+  .stack-header .answer-form { float: none; margin: 0; }
+  .stack-rail { margin-left: 4px; padding-left: 22px; }
+  .stack-number { left: -35px; }
+}

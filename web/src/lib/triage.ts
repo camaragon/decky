@@ -5,8 +5,8 @@ export function needsAttention(pr: InboxPr) {
     pr.review_result?.risk === "high" || pr.review_result?.second_opinion?.risk === "high" || Boolean(pr.review_result?.outdated);
 }
 
-export function triageGroup(stack: InboxStack) {
+export function triageGroup(stack: InboxStack, reviewResultsEnabled: boolean) {
   if (stack.prs.some(needsAttention)) return "Needs attention";
-  if (stack.prs.some(pr => pr.draft || pr.checks === "pending")) return "Not ready";
+  if (stack.prs.some(pr => pr.draft || pr.checks === "pending" || (reviewResultsEnabled && !pr.review_result))) return "Not ready";
   return "Ready to decide";
 }
