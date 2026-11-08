@@ -17,11 +17,15 @@ export function StatusSidebar({
   onRefresh: () => void;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   async function open(url: string) {
     setBusy(url);
+    setActionError(null);
     try {
       await postOpenUrl(url);
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Unable to open URL");
     } finally {
       setBusy(null);
     }
@@ -42,6 +46,7 @@ export function StatusSidebar({
         </Button>
       </div>
       {error ? <p className="text-[11px] text-red-600 dark:text-red-400">{error}</p> : null}
+      {actionError ? <p role="alert" className="text-[11px] text-red-600 dark:text-red-400">{actionError}</p> : null}
       {waiting.length ? (
         <ul className="space-y-1">
           {waiting.map((item) => (

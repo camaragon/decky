@@ -128,7 +128,7 @@ def test_invalid_allowed_host_fails_startup(setup):
         create_app(static=None)
 
 
-def test_proxy_host_only_reaches_inbox(setup, monkeypatch, tmp_path):
+def test_proxy_dashboard_reads_and_write_boundary(setup, monkeypatch, tmp_path):
     settings, _ = setup
     settings["server.allowed_hosts"] = ["review.example.com"]
     (tmp_path / "index.html").write_text("<html></html>")
@@ -145,7 +145,12 @@ def test_proxy_host_only_reaches_inbox(setup, monkeypatch, tmp_path):
     proxy = TestClient(app, base_url="http://review.example.com")
     assert proxy.put("/api/config/review.command", json={"value": "evil {url}"}).status_code == 403
     assert proxy.delete("/api/config/review.command").status_code == 403
-    assert proxy.get("/api/config").status_code == 403
+    monkeypatch.setattr(api.views, "fetch_table", lambda kind: {"rows": [], "notes": []})
+    monkeypatch.setattr(api, "load_queue", lambda: {"disabled": True})
+    monkeypatch.setattr(api, "load_status", lambda: {"disabled": True})
+    for path in ("meta", "config", "queue", "status", "tables/review", "tables/team", "tables/mine"):
+        assert proxy.get(f"/api/{path}").status_code == 200
+    assert proxy.get("/api/tables/unknown").status_code == 403
     assert proxy.post("/api/open-url", json={"url": "https://example.com"}).status_code == 403
     assert proxy.post("/api/prs/review", json={"repo": prs[0]["repo"], "number": 1}).status_code == 403
     assert proxy.post("/mcp", json={}).status_code == 403
@@ -153,7 +158,20 @@ def test_proxy_host_only_reaches_inbox(setup, monkeypatch, tmp_path):
     opened.assert_not_called()
     assert proxy.get("/inbox").status_code == 200
     assert proxy.get("/api/inbox").status_code == 200
-    assert proxy.post("/api/inbox/decision", json=answer).status_code == 200
+    headers = {"Origin": "http://review.example.com", "Sec-Fetch-Site": "same-origin", "X-Requested-With": "fetch"}
+    for invalid in (
+        {},
+        {**headers, "Origin": "null"},
+        {**headers, "Origin": "http://foreign.example"},
+        {**headers, "Origin": "https://review.example.com"},
+        {**headers, "Origin": "http://review.example.com:8080"},
+        {**headers, "Sec-Fetch-Site": "same-site"},
+        {**headers, "Sec-Fetch-Site": "cross-site"},
+        {"Origin": headers["Origin"]},
+    ):
+        assert proxy.post("/api/inbox/decision", json=answer, headers=invalid).status_code == 403
+    command.assert_not_called()
+    assert proxy.post("/api/inbox/decision", json=answer, headers=headers).status_code == 200
     assert command.call_count == 1
     local = TestClient(app, base_url="http://127.0.0.1")
     assert local.put("/api/config/review.command", json={"value": "agent {url}"}).status_code == 200

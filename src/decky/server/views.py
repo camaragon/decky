@@ -49,8 +49,8 @@ def _raw_value(s: config.Setting) -> tuple[Any, str]:
         return None, "file"
 
 
-def config_settings() -> list[dict]:
-    """Return editable text per key; invalid keys carry their raw value and error."""
+def config_settings(*, redact: bool = False) -> list[dict]:
+    """Return settings, hiding credential-bearing and invalid values for proxy reads."""
     out: list[dict] = []
     for key in sorted(config.SETTINGS):
         s = config.SETTINGS[key]
@@ -60,6 +60,11 @@ def config_settings() -> list[dict]:
         except click.ClickException as e:
             value, source = _raw_value(s)
             error = e.message
+        # Commands and URL templates can embed credentials, including invalid raw values.
+        if redact and (key.endswith((".command", "_command")) or key == "jira.browse_url"):
+            value = "[hidden through an allowed proxy host]" if value is not None else None
+        if redact and error:
+            value, error = None, "Invalid setting; inspect locally."
         out.append(
             {
                 "key": key,

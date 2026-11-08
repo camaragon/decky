@@ -223,3 +223,39 @@ def test_loopback_host_config_write(tmp_path, monkeypatch, host) -> None:
 )
 def test_invalid_host_rejected(client, host) -> None:
     assert client.get("/api/config", headers={"Host": host}).status_code == 421
+
+
+def test_proxy_read_responses_hide_credentials(tmp_path, monkeypatch):
+    import click
+    from decky import config
+
+    monkeypatch.setenv("DECKY_CONFIG", str(tmp_path / "config.toml"))
+    monkeypatch.setenv("DECKY_SERVER_ALLOWED_HOSTS", "review.example.com")
+    secret = "example-secret-value"
+    for key, setting in config.SETTINGS.items():
+        if key.endswith((".command", "_command")):
+            value = f'["tool", "--token", "{secret}"]' if setting.kind == "list_str" else f"tool --token {secret}"
+            monkeypatch.setenv(setting.env, value)
+    monkeypatch.setenv("DECKY_JIRA_BROWSE_URL", f"https://user:{secret}@tracker.example/{{key}}?token={secret}")
+    # Invalid values must not fall back to exposing raw config or parser errors.
+    monkeypatch.setenv("DECKY_REVIEW_REVIEWER_COMMAND", f'["{secret}",')
+    app = create_app(static=None)
+    proxy = TestClient(app, base_url="https://review.example.com")
+    for path in ("/api/meta", "/api/config"):
+        response = proxy.get(path)
+        assert response.status_code == 200
+        assert secret not in response.text
+    settings = {s["key"]: s for s in proxy.get("/api/config").json()["settings"]}
+    assert settings["pr.hide_authors"]["value"] == '["renovate"]'
+    assert settings["review.command"]["value"] == "[hidden through an allowed proxy host]"
+    assert proxy.get("/api/meta").json()["jiraBrowseUrl"] is None
+    local = TestClient(app, base_url="http://127.0.0.1")
+    assert secret in local.get("/api/config").text
+
+    def fail():
+        raise click.ClickException(secret)
+
+    monkeypatch.setattr("decky.server.api.load_queue", fail)
+    response = proxy.get("/api/queue")
+    assert response.status_code == 422
+    assert secret not in response.text
