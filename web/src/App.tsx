@@ -6,8 +6,9 @@ import { Layout } from "./components/Layout";
 import { hideAuthorList, useConfig } from "./hooks/useConfig";
 import { queueActive, useQueue } from "./hooks/useQueue";
 import { useTable } from "./hooks/useTables";
-import { fetchMeta } from "./lib/api";
+import { fetchInbox, fetchMeta } from "./lib/api";
 import { filterRows, loadFilters } from "./lib/filters";
+import { needsAttention } from "./lib/triage";
 import { queueToRow } from "./lib/queue";
 import { ConfigPage } from "./pages/Config";
 import { InboxPage } from "./pages/Inbox";
@@ -18,10 +19,11 @@ function Hotkeys() {
   const navigate = useNavigate();
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.altKey || e.ctrlKey || e.metaKey || (e.target instanceof HTMLElement && e.target.closest("input, select, textarea, [contenteditable]"))) return;
       if (e.key === "t") {
-        const order = ["/", "/prs", "/inbox", "/config"];
-        const idx = order.indexOf(window.location.pathname);
+        const order = ["/inbox", "/reviews", "/prs", "/config"];
+        const path = window.location.pathname === "/" ? "/inbox" : window.location.pathname;
+        const idx = order.indexOf(path);
         navigate(order[(idx + 1) % order.length]);
       }
     }
@@ -32,7 +34,9 @@ function Hotkeys() {
 }
 
 function Shell() {
-  const isInbox = useLocation().pathname === "/inbox";
+  const pathname = useLocation().pathname;
+  const isInbox = pathname === "/inbox" || pathname === "/";
+  const inbox = useQuery({ queryKey: ["inbox"], queryFn: fetchInbox, enabled: false });
   const meta = useQuery({ queryKey: ["meta"], queryFn: fetchMeta, enabled: !isInbox });
   const useQueueSource = Boolean(meta.data?.queueConfigured);
   const queue = useQueue(useQueueSource && !isInbox);
@@ -44,29 +48,32 @@ function Shell() {
   const reviewFilters = loadFilters("reviews-page");
   const mineFilters = loadFilters("mine-page");
 
-  let reviewCount = 0;
-  let mineCount = 0;
+  let reviewCount: number | undefined;
+  let mineCount: number | undefined;
+  let teamCount: number | undefined;
   if (useQueueSource && queueActive(queue.data)) {
     const direct = queue.data.direct.map((item) => queueToRow(item, true));
     const teamRows = queue.data.team.map((item) => queueToRow(item, true));
     const mineRows = queue.data.mine.map((item) => queueToRow(item, false));
-    reviewCount =
-      filterRows(direct, reviewFilters, hideAuthors).length +
-      filterRows(teamRows, reviewFilters, hideAuthors).length;
+    reviewCount = filterRows(direct, reviewFilters, hideAuthors).length;
+    teamCount = filterRows(teamRows, reviewFilters, hideAuthors).length;
     mineCount = filterRows(mineRows, mineFilters, hideAuthors).length;
   } else if (!useQueueSource) {
-    reviewCount =
-      filterRows(review.data?.rows ?? [], reviewFilters, hideAuthors).length +
-      filterRows(team.data?.rows ?? [], reviewFilters, hideAuthors).length;
-    mineCount = filterRows(mine.data?.rows ?? [], mineFilters, hideAuthors).length;
+    if (review.data) reviewCount = filterRows(review.data.rows, reviewFilters, hideAuthors).length;
+    if (team.data) teamCount = filterRows(team.data.rows, reviewFilters, hideAuthors).length;
+    if (mine.data) mineCount = filterRows(mine.data.rows, mineFilters, hideAuthors).length;
   }
 
   return (
     <>
       <Hotkeys />
-      <Layout reviewCount={reviewCount} mineCount={mineCount}>
+      <Layout reviewCount={reviewCount} teamCount={teamCount} mineCount={mineCount}
+        inboxCount={inbox.data?.stacks.reduce((n, stack) => n + stack.prs.length, 0)}
+        attentionCount={inbox.data?.stacks.flatMap(stack => stack.prs).filter(needsAttention).length}
+        configCount={config.data?.settings.filter(setting => setting.error).length}>
         <Routes>
-          <Route path="/" element={<ReviewsPage />} />
+          <Route path="/" element={<InboxPage />} />
+          <Route path="/reviews" element={<ReviewsPage />} />
           <Route path="/prs" element={<MyPrsPage />} />
           <Route path="/inbox" element={<InboxPage />} />
           <Route path="/config" element={<ConfigPage />} />

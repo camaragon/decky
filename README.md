@@ -123,7 +123,8 @@ decky server
 decky server --no-open --dev               # API only; use pnpm -C web dev for the SPA
 ```
 
-The **Review inbox** at `/inbox` is a phone-friendly view of your open PRs.
+The **Review inbox** is the landing page (`/`, also `/inbox`) and a phone-friendly view of your open PRs.
+The other pages are Reviews (`/reviews`), My PRs (`/prs`), and Config (`/config`); press `t` to cycle through them in that order.
 It fills the page width, groups stacks by repository, and numbers PRs in merge order.
 Stacks and PRs start collapsed for quick scanning: a stack row counts PRs with
 failing checks, requested changes, or pending checks, and each PR row shows check
