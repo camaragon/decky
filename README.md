@@ -125,15 +125,18 @@ decky server --no-open --dev               # API only; use pnpm -C web dev for t
 
 The **Review inbox** is the landing page (`/`, also `/inbox`) and a phone-friendly view of your open PRs.
 The other pages are Reviews (`/reviews`), My PRs (`/prs`), and Config (`/config`); press `t` to cycle through them in that order.
-It fills the page width, groups stacks by repository, and numbers PRs in merge order.
-Stacks and PRs start collapsed for quick scanning: a stack row counts PRs with
-failing checks, requested changes, or pending checks, and each PR row shows check
-and review status, draft state, and any answer already sent. Expand a PR for a
-plain-text summary from its description (or an optional local review result), changed-file counts, GitHub screenshot
-thumbnails, and links to the PR and diff; expand the description or file list for
-more detail. Per-PR and whole-stack Merge/Hold buttons send an
-optional note through the decision hook; they stay disabled without a command.
-Delivery success or failure appears inline. Last answers stay in the browser tab
+It sorts one card per decision into Needs attention (failing checks, requested
+changes, high or outdated review risk), Not ready (draft, pending checks, or no
+review result), and Ready to decide, worst first; filter buttons narrow the list.
+A card shows risk, passing/total checks with failing check names, review decision
+and approvals, size, author, ages, a summary line, and a GitHub link without
+expanding. "Why · what to check" unfolds the review result, description, changed
+files, and GitHub screenshot thumbnails in place. A single PR has Merge/Hold; a
+stack of more than one PR lists its PRs in a numbered merge-order rail with
+"Merge all N" / "Hold stack" plus "Answer only this PR" per PR. Answers go
+through the decision hook, with an optional note box shown on demand; buttons
+stay disabled without a command. Keys: `J`/`K` move between cards, `M` merge,
+`H` hold, `N` note. Delivery success or failure appears inline. Last answers stay in the browser tab
 for the session, keyed by PR commit. The inbox does not load dashboard buckets,
 configuration or queue APIs.
 
