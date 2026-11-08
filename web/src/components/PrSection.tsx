@@ -1,7 +1,7 @@
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, GitPullRequest } from "lucide-react";
 import { useMemo, useState } from "react";
 
-import type { PrRow } from "../lib/api";
+import type { InboxStack, PrRow } from "../lib/api";
 import { postReview } from "../lib/api";
 import { filterRows, type FilterState } from "../lib/filters";
 import { formatRelativeTime } from "../lib/time";
@@ -12,6 +12,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collap
 
 type Props = {
   title: string;
+  inboxStacks?: InboxStack[];
   rows: PrRow[];
   hideAuthors: string[];
   filters: FilterState;
@@ -36,6 +37,7 @@ function jiraHref(template: string, key: string): string {
 
 export function PrSection({
   title,
+  inboxStacks,
   rows,
   hideAuthors,
   filters,
@@ -48,6 +50,8 @@ export function PrSection({
   jiraBrowseUrl = null,
   queueToday = "",
 }: Props) {
+  const stackPositions = new Map(inboxStacks?.filter(s => s.prs.length > 1).flatMap(s =>
+    s.prs.map((pr, index) => [`${pr.repo}#${pr.number}`, `${index + 1}/${s.prs.length} in stack`] as const)));
   const [open, setOpen] = useState(defaultOpen);
   const [message, setMessage] = useState<string | null>(null);
   const visible = useMemo(() => filterRows(rows, filters, hideAuthors), [rows, filters, hideAuthors]);
@@ -65,9 +69,9 @@ export function PrSection({
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="mb-6">
       <CollapsibleTrigger className="flex w-full items-center gap-2 rounded-md py-1 text-left hover:bg-accent/50">
-        <ChevronDown className={cn("h-4 w-4 transition-transform", !open && "-rotate-90")} />
+        <ChevronDown aria-hidden="true" className={cn("h-4 w-4 transition-transform", !open && "-rotate-90")} />
         <h2 className="text-sm font-semibold">
-          {title} {visible.length}
+          {title} <span className="count">{visible.length}</span>
         </h2>
       </CollapsibleTrigger>
       <CollapsibleContent className="pt-1">
@@ -75,25 +79,22 @@ export function PrSection({
         {visible.length === 0 ? (
           <p className="py-2 text-xs text-muted-foreground">{empty}</p>
         ) : (
-          <div className="overflow-x-auto rounded-md border border-border">
-            <table className="w-full text-xs">
-              <tbody>
-                {visible.map((row) => (
-                  <PrRowLine
-                    key={`${row.repo}#${row.number}`}
-                    row={row}
-                    showAuthor={showAuthor}
-                    reviewAction={reviewAction}
-                    showReviewed={showReviewed}
-                    queueMode={queueMode}
-                    jiraBrowseUrl={jiraBrowseUrl}
-                    queueToday={queueToday}
-                    onReview={() => runReview(row)}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ul className="pr-list">
+            {visible.map((row) => (
+              <PrRowLine
+                key={`${row.repo}#${row.number}`}
+                row={row}
+                stackPosition={!showAuthor ? stackPositions.get(`${row.repo}#${row.number}`) : undefined}
+                showAuthor={showAuthor}
+                reviewAction={reviewAction}
+                showReviewed={showReviewed}
+                queueMode={queueMode}
+                jiraBrowseUrl={jiraBrowseUrl}
+                queueToday={queueToday}
+                onReview={() => runReview(row)}
+              />
+            ))}
+          </ul>
         )}
       </CollapsibleContent>
     </Collapsible>
@@ -102,6 +103,7 @@ export function PrSection({
 
 function PrRowLine({
   row,
+  stackPosition,
   showAuthor,
   reviewAction,
   showReviewed,
@@ -111,6 +113,7 @@ function PrRowLine({
   onReview,
 }: {
   row: PrRow;
+  stackPosition?: string;
   showAuthor: boolean;
   reviewAction: boolean;
   showReviewed: boolean;
@@ -125,77 +128,33 @@ function PrRowLine({
       : row.opened
     : formatRelativeTime(row.updated_at ?? "");
   return (
-    <tr className="group border-b border-border last:border-0 hover:bg-muted/40">
-      <td className="w-[1%] whitespace-nowrap px-2 py-1.5 align-middle">
-        <a
-          href={row.url}
-          target="_blank"
-          rel="noreferrer"
-          className="font-medium text-primary hover:underline"
-        >
-          {row.repo}#{row.number}
-        </a>
-      </td>
-      <td className="max-w-md truncate px-2 py-1.5 align-middle" title={row.title}>
-        {row.title}
-      </td>
-      {showAuthor ? (
-        <td className="whitespace-nowrap px-2 py-1.5 align-middle text-muted-foreground">{row.author}</td>
-      ) : null}
-      {!queueMode ? (
-        <td className="whitespace-nowrap px-2 py-1.5 align-middle">
-          <Badge variant={checkVariant(row.checks)}>{row.checks}</Badge>
-        </td>
-      ) : null}
-      <td className="whitespace-nowrap px-2 py-1.5 align-middle">
-        {row.draft ? <Badge variant="draft">draft</Badge> : null}
-      </td>
-      {showReviewed ? (
-        <td className="whitespace-nowrap px-2 py-1.5 align-middle">
-          {row.reviewed === true ? (
-            <span title="Reviewed">✓</span>
-          ) : row.reviewed === false ? (
-            <span title="Not reviewed">·</span>
-          ) : null}
-        </td>
-      ) : null}
-      {!queueMode ? (
-        <td className="whitespace-nowrap px-2 py-1.5 align-middle tabular-nums">{row.approvals}</td>
-      ) : null}
-      <td className="whitespace-nowrap px-2 py-1.5 align-middle text-muted-foreground">{relative ?? ""}</td>
-      <td className="max-w-[10rem] truncate px-2 py-1.5 align-middle">
-        {row.jira?.length ? (
-          row.jira.map((key, i) => (
-            <span key={key}>
-              {i > 0 ? ", " : null}
-              {jiraBrowseUrl ? (
-                <a href={jiraHref(jiraBrowseUrl, key)} target="_blank" rel="noreferrer" className="text-primary hover:underline">
-                  {key}
-                </a>
-              ) : (
-                key
-              )}
-            </span>
-          ))
-        ) : (
-          "—"
-        )}
-      </td>
-      <td className="whitespace-nowrap px-2 py-1.5 align-middle">
-        <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-          {reviewAction ? (
-            <Button type="button" size="sm" onClick={onReview}>
-              Review
-            </Button>
-          ) : null}
-          <Button type="button" size="sm" variant="outline" asChild>
-            <a href={row.url} target="_blank" rel="noreferrer">
-              Open
-            </a>
-          </Button>
+    <li className="pr-list-row">
+      <GitPullRequest aria-hidden="true" size={18} className={`pr-row-icon check-${row.checks}`} />
+      <div className="pr-row-main">
+        <a href={row.url} target="_blank" rel="noreferrer" className="pr-row-title">{row.title}</a>
+        <div className="pr-row-meta">
+          <a href={row.url} target="_blank" rel="noreferrer">{row.repo}#{row.number}</a>
+          {showAuthor ? <span>{row.author}</span> : null}
+          {stackPosition ? <span className="stack-position">{stackPosition}</span> : null}
+          {queueMode ? <span>opened {relative}</span> : <>
+            {row.opened ? <span>opened {formatRelativeTime(row.opened)}</span> : null}
+            <span>updated {relative || "unknown"}</span>
+            {row.additions != null && row.deletions != null ? <span className="size-stat"><span className="check-pass">+{row.additions}</span> <span className="check-fail">−{row.deletions}</span></span> : null}
+          </>}
+          {row.jira?.map(key => jiraBrowseUrl ? <a key={key} href={jiraHref(jiraBrowseUrl, key)} target="_blank" rel="noreferrer">{key}</a> : <span key={key}>{key}</span>)}
         </div>
-      </td>
-    </tr>
+      </div>
+      <div className="pr-row-status">
+        {!queueMode ? <Badge variant={checkVariant(row.checks)}>Checks: {row.checks}</Badge> : null}
+        {row.draft ? <Badge variant="draft">draft</Badge> : null}
+        {!queueMode ? <span className={`fact ${row.review_decision === "CHANGES_REQUESTED" ? "check-fail" : row.review_decision === "APPROVED" ? "check-pass" : ""}`}>{row.review_decision?.replaceAll("_", " ").toLowerCase() || "No review decision"} · {row.approvals} approval{row.approvals === 1 ? "" : "s"}</span> : null}
+        {showReviewed && row.reviewed != null ? <span className="fact">{row.reviewed ? "Reviewed" : "Not reviewed"}</span> : null}
+      </div>
+      <div className="pr-row-actions">
+        {reviewAction ? <Button type="button" size="sm" onClick={onReview}>Review</Button> : null}
+        <Button type="button" size="sm" variant="outline" asChild><a href={row.url} target="_blank" rel="noreferrer">Open ↗</a></Button>
+      </div>
+    </li>
   );
 }
 

@@ -8,11 +8,12 @@ import { Button } from "../components/ui/button";
 import { hideAuthorList, useConfig } from "../hooks/useConfig";
 import { queueActive, useQueue } from "../hooks/useQueue";
 import { useTable } from "../hooks/useTables";
-import { fetchMeta } from "../lib/api";
+import { fetchInbox, fetchMeta } from "../lib/api";
 import { defaultFilters, loadFilters, saveFilters, type FilterState } from "../lib/filters";
 import { queueToRow } from "../lib/queue";
 
 export function MyPrsPage() {
+  const inbox = useQuery({ queryKey: ["inbox"], queryFn: fetchInbox, enabled: false });
   const meta = useQuery({ queryKey: ["meta"], queryFn: fetchMeta });
   const useQueueSource = Boolean(meta.data?.queueConfigured);
   const queue = useQueue(useQueueSource);
@@ -51,8 +52,8 @@ export function MyPrsPage() {
 
   return (
     <div>
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <h1 className="text-base font-semibold">My PRs</h1>
+      <div className="page-header">
+        <div><h1>My PRs</h1><p>Your open PRs and what they are waiting on.</p></div>
         <Button type="button" variant="outline" size="sm" onClick={refresh}>
           Refresh
         </Button>
@@ -72,6 +73,7 @@ export function MyPrsPage() {
         <PrSection
           title="My PRs"
           rows={rows}
+          inboxStacks={inbox.data?.stacks}
           hideAuthors={hideAuthors}
           filters={filters}
           empty="no open PRs by you"

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { Button } from "../components/ui/button";
 import { QueryFeedback } from "../components/QueryFeedback";
 
 import { type ConfigSetting, deleteConfig, putConfig } from "../lib/api";
@@ -13,26 +14,17 @@ export function ConfigPage() {
   if (!data) return <QueryFeedback label="config" query={query} />;
 
   return (
-    <section>
-      <h1>Config</h1>
+    <div className="config-page">
+      <header className="page-header"><div><h1>Config</h1><p>Effective settings, grouped by purpose.</p></div></header>
       <QueryFeedback label="config" query={query} />
-      <p>{data.path}</p>
-      <table>
-        <thead>
-          <tr>
-            <th>Key</th>
-            <th>Value</th>
-            <th>Source</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {data.settings.map((s) => (
-            <ConfigRow key={s.key} setting={s} onSaved={() => client.invalidateQueries()} />
-          ))}
-        </tbody>
-      </table>
-    </section>
+      <p className="config-path">{data.path}</p>
+      {[...new Set(data.settings.map(s => s.key.includes(".") ? s.key.split(".")[0] : "general"))].map(group => <section key={group} className="config-group">
+        <h2>{group}</h2>
+        <table className="config-table"><tbody>
+          {data.settings.filter(s => (s.key.includes(".") ? s.key.split(".")[0] : "general") === group).map(s => <ConfigRow key={s.key} setting={s} onSaved={() => client.invalidateQueries()} />)}
+        </tbody></table>
+      </section>)}
+    </div>
   );
 }
 
@@ -62,9 +54,13 @@ function ConfigRow({ setting, onSaved }: { setting: ConfigSetting; onSaved: () =
 
   return (
     <tr>
-      <td title={setting.help}>{setting.key}</td>
+      <th scope="row"><span>{setting.key}</span><p>{setting.help}</p></th>
       <td>
         <input
+          name={setting.key}
+          autoComplete="off"
+          spellCheck={false}
+          aria-invalid={Boolean(setting.error || error)}
           disabled={busy}
           value={value ?? setting.value ?? ""}
           onChange={(e) => setValue(e.target.value)}
@@ -72,18 +68,18 @@ function ConfigRow({ setting, onSaved }: { setting: ConfigSetting; onSaved: () =
         />
       </td>
       <td>
-        {setting.source}
+        <span className="fact">{setting.source}</span>
         {setting.error ? <span role="alert">{setting.error}</span> : null}
       </td>
       <td>
-        <button type="button" disabled={busy} onClick={() => mutate(false)}>
+        <Button size="sm" variant="outline" type="button" disabled={busy} onClick={() => mutate(false)}>
           Save
-        </button>
-        <button type="button" disabled={busy} onClick={() => mutate(true)}>
+        </Button>
+        <Button size="sm" variant="outline" type="button" disabled={busy} onClick={() => mutate(true)}>
           Unset
-        </button>
+        </Button>
         {error ? <span role="alert">{error}</span> : null}
-        {msg ? <span>{msg}</span> : null}
+        {msg ? <span role="status">{msg}</span> : null}
       </td>
     </tr>
   );

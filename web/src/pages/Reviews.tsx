@@ -64,8 +64,8 @@ export function ReviewsPage() {
       : [];
     return (
       <div>
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <h1 className="text-base font-semibold">Reviews</h1>
+        <div className="page-header">
+          <div><h1>Reviews</h1><p>PRs waiting for your review, directly or via a team.</p></div>
           <Button type="button" variant="outline" size="sm" onClick={refreshAll}>
             Refresh
           </Button>
@@ -112,8 +112,8 @@ export function ReviewsPage() {
 
   return (
     <div>
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <h1 className="text-base font-semibold">Reviews</h1>
+      <div className="page-header">
+        <div><h1>Reviews</h1><p>PRs waiting for your review, directly or via a team.</p></div>
         <Button type="button" variant="outline" size="sm" onClick={refreshAll}>
           Refresh
         </Button>
