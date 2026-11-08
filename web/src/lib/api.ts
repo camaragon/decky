@@ -40,17 +40,6 @@ export type QueueResponse =
 
 export type TableResponse = { rows: PrRow[]; notes: string[] };
 
-export type StatusItem = {
-  title: string;
-  url: string;
-  subtitle?: string;
-  state?: string;
-};
-
-export type StatusResponse =
-  | { disabled: true }
-  | { disabled: false; waiting: StatusItem[]; running: StatusItem[] };
-
 export type ConfigSetting = {
   key: string;
   value: string | null;
@@ -76,15 +65,12 @@ export const fetchMeta = () =>
   api<{
     reviewConfigured: boolean;
     queueConfigured: boolean;
-    statusConfigured: boolean;
     jiraBrowseUrl: string | null;
   }>("/api/meta");
 
 export const fetchTable = (kind: string) => api<TableResponse>(`/api/tables/${kind}`);
 
 export const fetchQueue = () => api<QueueResponse>("/api/queue");
-
-export const fetchStatus = () => api<StatusResponse>("/api/status");
 
 export const fetchConfig = () =>
   api<{ path: string; settings: ConfigSetting[] }>("/api/config");

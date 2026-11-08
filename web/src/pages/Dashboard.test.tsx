@@ -2,10 +2,8 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter } from "react-router";
 
 import * as api from "../lib/api";
-import { Layout } from "../components/Layout";
 import { ReviewsPage } from "./Reviews";
 import { MyPrsPage } from "./MyPrs";
 
@@ -15,7 +13,6 @@ beforeEach(() => {
   vi.spyOn(api, "fetchMeta").mockResolvedValue({
     reviewConfigured: false,
     queueConfigured: false,
-    statusConfigured: true,
     jiraBrowseUrl: null,
   });
   vi.spyOn(api, "fetchConfig").mockResolvedValue({ path: "/tmp/config.toml", settings: [] });
@@ -85,7 +82,6 @@ it.each([ReviewsPage, MyPrsPage])(
     vi.mocked(api.fetchMeta).mockResolvedValue({
       reviewConfigured: false,
       queueConfigured: true,
-      statusConfigured: false,
       jiraBrowseUrl: null,
     });
     vi.spyOn(api, "fetchQueue")
@@ -103,30 +99,3 @@ it.each([ReviewsPage, MyPrsPage])(
     expect(await screen.findByText(/no (review requests|open PRs by you)/)).toBeInTheDocument();
   },
 );
-
-it("shows status failures and blocked actions without breaking the page", async () => {
-  vi.spyOn(api, "postOpenUrl").mockRejectedValue(new Error("This action is unavailable through an allowed proxy host; use local access."));
-  vi.spyOn(api, "fetchStatus")
-    .mockRejectedValueOnce(new Error("status.command cannot launch"))
-    .mockResolvedValue({
-      disabled: false,
-      waiting: [{ title: "Ready for input", url: "https://example.com" }],
-      running: [],
-    });
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
-    <QueryClientProvider client={client}>
-      <MemoryRouter>
-        <Layout reviewCount={0} mineCount={0}>
-          content
-        </Layout>
-      </MemoryRouter>
-    </QueryClientProvider>,
-  );
-  expect(await screen.findByRole("alert")).toHaveTextContent("status.command cannot launch");
-  await userEvent.click(screen.getByText("Retry status"));
-  expect(await screen.findByText("Ready for input")).toBeInTheDocument();
-  await userEvent.click(screen.getByText("Ready for input"));
-  expect(await screen.findByRole("alert")).toHaveTextContent("use local access");
-  expect(screen.getByText("Ready for input")).toBeInTheDocument();
-});

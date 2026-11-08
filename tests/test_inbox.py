@@ -147,8 +147,7 @@ def test_proxy_dashboard_reads_and_write_boundary(setup, monkeypatch, tmp_path):
     assert proxy.delete("/api/config/review.command").status_code == 403
     monkeypatch.setattr(api.views, "fetch_table", lambda kind: {"rows": [], "notes": []})
     monkeypatch.setattr(api, "load_queue", lambda: {"disabled": True})
-    monkeypatch.setattr(api, "load_status", lambda: {"disabled": True})
-    for path in ("meta", "config", "queue", "status", "tables/review", "tables/team", "tables/mine"):
+    for path in ("meta", "config", "queue", "tables/review", "tables/team", "tables/mine"):
         assert proxy.get(f"/api/{path}").status_code == 200
     assert proxy.get("/api/tables/unknown").status_code == 403
     assert proxy.post("/api/open-url", json={"url": "https://example.com"}).status_code == 403

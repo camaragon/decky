@@ -99,7 +99,6 @@ def test_server_log_level_choice(isolated_config: Path, runner: CliRunner) -> No
 def test_init_has_status_placeholder(isolated_config: Path, runner: CliRunner) -> None:
     result = runner.invoke(cli, ["config", "init"])
     text = isolated_config.read_text(encoding="utf-8")
-    assert "your-status-command" in text
     assert "your-queue-script" in text
 
 

@@ -4,9 +4,7 @@ import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { fetchMeta } from "../lib/api";
-import { useStatus } from "../hooks/useStatus";
 import { QueryFeedback } from "./QueryFeedback";
-import { StatusSidebar } from "./StatusSidebar";
 import { ThemeToggle } from "./ThemeToggle";
 import { Button } from "./ui/button";
 import { cn } from "../lib/utils";
@@ -32,8 +30,6 @@ export function Layout({
   const collapsed = localStorage.getItem("decky.sidebar") === "collapsed";
   const counts: Record<string, number> = { "/": reviewCount, "/prs": mineCount };
   const meta = useQuery({ queryKey: ["meta"], queryFn: fetchMeta, enabled: !isInbox });
-  const status = useStatus(!isInbox && Boolean(meta.data?.statusConfigured));
-  const statusPayload = status.data && !status.data.disabled ? status.data : null;
 
   return (
     <div
@@ -71,17 +67,6 @@ export function Layout({
           </Button>
         </div>
         {!isInbox && !collapsed ? <QueryFeedback label="settings" query={meta} /> : null}
-        {!isInbox && !collapsed && meta.data?.statusConfigured ? (
-          <QueryFeedback label="status" query={status} />
-        ) : null}
-        {!isInbox && !collapsed && statusPayload ? (
-          <StatusSidebar
-            waiting={statusPayload.waiting}
-            running={statusPayload.running}
-            error={null}
-            onRefresh={() => status.refetch()}
-          />
-        ) : null}
         <nav className="flex flex-col gap-0.5">
           {links.map((link) => (
             <Link

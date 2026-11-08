@@ -29,7 +29,6 @@ PROXY_ROUTES = {
     ("GET", "/api/tables/team"),
     ("GET", "/api/tables/mine"),
     ("GET", "/api/queue"),
-    ("GET", "/api/status"),
     ("GET", "/api/inbox"),
     ("GET", "/api/inbox/image"),
     ("POST", "/api/inbox/decision"),

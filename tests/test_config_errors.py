@@ -97,7 +97,6 @@ def test_meta_degrades_only_invalid_feature(setup):
     assert response.status_code == 200
     body = response.json()
     assert body["queueConfigured"] is True and body["jiraBrowseUrl"] is None
-    assert body["statusConfigured"] is False
     queue = client.get("/api/queue")
     assert queue.status_code == 422 and "queue.command" in queue.json()["message"]
 
@@ -112,7 +111,7 @@ def test_env_and_valid_list_formats(setup, monkeypatch):
 
 
 @pytest.mark.parametrize("setting,route", [
-    ("queue.command", "/api/queue"), ("status.command", "/api/status"),
+    ("queue.command", "/api/queue"),
     ("browser.command", "/api/open-url"),
 ])
 @pytest.mark.parametrize("failure", ["missing", "quote", "empty", "exit", "permission"])

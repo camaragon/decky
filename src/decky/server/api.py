@@ -15,7 +15,6 @@ from decky import config
 from decky.browser import open_http_url
 from decky.commands import pr as pr_cmd
 from decky.server import views
-from decky.status import load_status
 from decky.queue import load_queue
 
 TABLES = pr_cmd.KINDS
@@ -113,7 +112,6 @@ def meta(request: Request) -> dict:
     return {
         "reviewConfigured": _configured("review.command"),
         "queueConfigured": _configured("queue.command"),
-        "statusConfigured": _configured("status.command"),
         "jiraBrowseUrl": jira
         if isinstance(jira, str)
         and jira.strip()
@@ -151,14 +149,6 @@ def review_pr(body: PrBody, request: Request) -> dict:
 def queue_route() -> dict:
     try:
         return load_queue()
-    except click.ClickException as e:
-        raise ActionFailed(str(e)) from e
-
-
-@router.get("/status")
-def status_route() -> dict:
-    try:
-        return load_status()
     except click.ClickException as e:
         raise ActionFailed(str(e)) from e
 
