@@ -73,9 +73,9 @@ button:disabled { cursor: default; }
 .check-pending { color: var(--warning); }
 @media (max-width: 700px) {
   .layout { display: block; }
-  .layout > main { padding: 20px 14px calc(100px + env(safe-area-inset-bottom)); }
+  .layout > main { padding: calc(60px + env(safe-area-inset-top)) 14px calc(100px + env(safe-area-inset-bottom)); }
   .app-sidebar { position: fixed; z-index: 20; top: auto; bottom: 0; width: 100%; height: auto; border-right: 0; border-top: 1px solid var(--border); padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); }
-  .sidebar-brand { position: fixed; right: 12px; top: 12px; padding: 0; }
+  .sidebar-brand { position: fixed; right: 12px; top: calc(12px + env(safe-area-inset-top)); padding: 0; }
   .sidebar-brand > span { display: none; }
   .app-sidebar nav { flex-direction: row; justify-content: space-around; }
   .nav-link { position: relative; flex: 1; flex-direction: column; gap: 4px; padding: 8px 2px; font-size: 11px; }
