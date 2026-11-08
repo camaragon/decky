@@ -255,3 +255,6 @@ def test_list_decision_fields() -> None:
         "opened": "2026-01-01T12:00:00Z", "additions": 12, "deletions": 3,
         "review_decision": "CHANGES_REQUESTED",
     }
+    query = github.build_graphql([], [])
+    for field in ("createdAt", "additions", "deletions", "reviewDecision"):
+        assert field in query
