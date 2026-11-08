@@ -22,7 +22,8 @@ function Hotkeys() {
       if (e.altKey || e.ctrlKey || e.metaKey || (e.target instanceof HTMLElement && e.target.closest("input, select, textarea, [contenteditable]"))) return;
       if (e.key === "t") {
         const order = ["/inbox", "/reviews", "/prs", "/config"];
-        const idx = order.indexOf(window.location.pathname);
+        const path = window.location.pathname === "/" ? "/inbox" : window.location.pathname;
+        const idx = order.indexOf(path);
         navigate(order[(idx + 1) % order.length]);
       }
     }
