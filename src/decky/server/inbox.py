@@ -111,7 +111,7 @@ def load() -> dict:
         if result is not None:
             row["review_result"] = result
     command, _ = config.resolve("review.decision_command")
-    return {"owners": configured, "all_owners": bool(all_owners), "stacks": stacks(rows), "notes": list(dict.fromkeys(notes)), "decision_enabled": bool(command)}
+    return {"owners": configured, "all_owners": bool(all_owners), "stacks": stacks(rows), "notes": list(dict.fromkeys(notes)), "decision_enabled": bool(command), "review_results_enabled": bool(directory)}
 
 
 @router.get("")

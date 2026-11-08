@@ -127,7 +127,8 @@ The **Review inbox** is the landing page (`/`, also `/inbox`) and a phone-friend
 The other pages are Reviews (`/reviews`), My PRs (`/prs`), and Config (`/config`); press `t` to cycle through them in that order.
 It sorts one card per decision into Needs attention (failing checks, requested
 changes, high or outdated review risk), Not ready (draft, pending checks, or no
-review result), and Ready to decide, worst first; filter buttons narrow the list.
+review result when `review.results_dir` is set), and Ready to decide, worst first;
+filter buttons narrow the list.
 A card shows risk, passing/total checks with failing check names, review decision
 and approvals, size, author, ages, a summary line, and a GitHub link without
 expanding. "Why · what to check" unfolds the review result, description, changed

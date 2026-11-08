@@ -120,7 +120,7 @@ export type InboxPr = PrRow & {
   review_result?: ReviewResult;
 };
 export type InboxStack = { repo: string; prs: InboxPr[] };
-export type InboxResponse = { owners: string[]; all_owners: boolean; stacks: InboxStack[]; notes: string[]; decision_enabled: boolean };
+export type InboxResponse = { owners: string[]; all_owners: boolean; stacks: InboxStack[]; notes: string[]; decision_enabled: boolean; review_results_enabled: boolean };
 export const fetchInbox = () => api<InboxResponse>("/api/inbox");
 export const sendAnswer = (stack: InboxStack, scope: "pr" | "stack", decision: "merge" | "hold", note: string) =>
   api<{ message: string }>("/api/inbox/decision", {

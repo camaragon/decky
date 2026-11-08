@@ -114,6 +114,7 @@ export function InboxPage() {
     event.preventDefault();
   }
   const groups = ["Needs attention", "Ready to decide", "Not ready"];
+  const resultsEnabled = Boolean(inbox.data?.review_results_enabled);
   const stacks = [...(inbox.data?.stacks ?? [])].sort((a, b) => {
     const risk = (s: InboxStack) => Math.max(...s.prs.map(p => Math.max(({ low: 1, medium: 2, high: 3 })[p.review_result?.risk ?? "low"], ({ low: 1, medium: 2, high: 3 })[p.review_result?.second_opinion?.risk ?? "low"]) * 10 + (p.checks === "fail" ? 2 : 0) + (p.review_decision === "CHANGES_REQUESTED" ? 1 : 0)));
     return risk(b) - risk(a);
@@ -135,9 +136,9 @@ export function InboxPage() {
     {inbox.data && !inbox.data.all_owners && !inbox.data.owners.length ? <p>Configure review.owners to see your open PRs. No GitHub queries were made.</p> : null}
     {inbox.data && (inbox.data.all_owners || inbox.data.owners.length > 0) && !inbox.data.stacks.length ? <p>{inbox.data.all_owners ? "No open PRs were found." : "No open PRs in your configured owners."}</p> : null}
     {inbox.data?.notes.map(note => <p key={note} className="text-sm">{note}</p>)}
-    <div className="triage-filters" aria-label="Triage filters">{["All", ...groups].map(group => <button key={group} aria-pressed={filter === group} onClick={() => setFilter(group)}>{group} <span className="count">{stacks.filter(s => group === "All" || triageGroup(s) === group).reduce((n, s) => n + s.prs.length, 0)}</span></button>)}</div>
+    <div className="triage-filters" aria-label="Triage filters">{["All", ...groups].map(group => <button key={group} aria-pressed={filter === group} onClick={() => setFilter(group)}>{group} <span className="count">{stacks.filter(s => group === "All" || triageGroup(s, resultsEnabled) === group).reduce((n, s) => n + s.prs.length, 0)}</span></button>)}</div>
     {groups.filter(group => filter === "All" || filter === group).map(group => {
-      const items = stacks.filter(s => triageGroup(s) === group);
+      const items = stacks.filter(s => triageGroup(s, resultsEnabled) === group);
       return items.length ? <section key={group} className="space-y-3"><h2 className="triage-heading">{group} <span className="count">{items.reduce((n, s) => n + s.prs.length, 0)}</span></h2>
         {items.map(stack => <article key={`${stack.repo}:${stack.prs[0].number}`} data-focus-card tabIndex={0} aria-label={stack.prs.length > 1 ? `${stack.prs.length} PR stack` : stack.prs[0].title} className={`triage-card ${stack.prs.length > 1 ? "stack-card" : ""}`}>
           {stack.prs.length === 1 ? <>{form(stack, "pr")}{prContent(stack.prs[0])}</> : <>

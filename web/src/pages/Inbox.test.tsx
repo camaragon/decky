@@ -64,3 +64,18 @@ it.each([false, true])("shows local risk in the row and both opinions in the exp
   expect(screen.queryByText("Description fallback")).not.toBeVisible();
   client.clear();
 });
+
+it.each([[false, "Ready to decide"], [true, "Not ready"]])("groups an unreviewed approved PR by whether review results are enabled (%s)", async (enabled, group) => {
+  window.history.replaceState({}, "", "/inbox");
+  const pr = {
+    repo: "example/demo", number: 102, title: "Tidy report headers", checks: "pass",
+    review_decision: "APPROVED", draft: false, url: "https://example.com/pull/102",
+    head_sha: "b".repeat(40), body: "", changed_files: 0, files: [], image_urls: [],
+  };
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ owners: ["example"], all_owners: false, stacks: [{ repo: pr.repo, prs: [pr] }], notes: [], decision_enabled: false, review_results_enabled: enabled }))));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={client}><App /></QueryClientProvider>);
+  const heading = await screen.findByRole("heading", { name: "Tidy report headers" });
+  expect(heading.closest("section")!.querySelector("h2")).toHaveTextContent(group);
+  client.clear();
+});
