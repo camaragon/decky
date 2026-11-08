@@ -79,3 +79,32 @@ it.each([[false, "Ready to decide"], [true, "Not ready"]])("groups an unreviewed
   expect(heading.closest("section")!.querySelector("h2")).toHaveTextContent(group);
   client.clear();
 });
+
+it("scopes keyboard answers to the focused stack member or the whole stack", async () => {
+  window.history.replaceState({}, "", "/inbox");
+  const member = (number: number, sha: string) => ({
+    repo: "example/demo", number, title: `Stack part ${number}`, checks: "pass", review_decision: "APPROVED", draft: false,
+    url: `https://example.com/pull/${number}`, head_sha: sha.repeat(40), body: "", changed_files: 0, files: [], image_urls: [],
+  });
+  const posts: { scope: string; numbers: number[] }[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === "/api/inbox/decision") { posts.push(JSON.parse(String(init?.body))); return new Response(JSON.stringify({ message: "Answer delivered" })); }
+    return new Response(JSON.stringify({ owners: ["example"], all_owners: false, stacks: [{ repo: "example/demo", prs: [member(1, "c"), member(2, "d")] }], notes: [], decision_enabled: true, review_results_enabled: false }));
+  }));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={client}><App /></QueryClientProvider>);
+  const card = (await screen.findByRole("heading", { name: "Stack part 2" })).closest("article")!;
+  expect(card.querySelector(".stack-header")).toHaveTextContent("No review yet");
+  const summary = screen.getAllByText("Answer only this PR")[1];
+  summary.focus();
+  await userEvent.keyboard("n");
+  expect(summary.closest("details")!.open).toBe(true);
+  expect(screen.getByLabelText("Optional note for PR #2")).toBeVisible();
+  summary.focus();
+  await userEvent.keyboard("m");
+  card.focus();
+  await userEvent.keyboard("h");
+  await vi.waitFor(() => expect(posts).toHaveLength(2));
+  expect(posts.map(p => [p.scope, p.numbers])).toEqual([["pr", [2]], ["stack", [1, 2]]]);
+  client.clear();
+});
