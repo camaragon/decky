@@ -244,3 +244,17 @@ def test_retry_then_success(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(github.time, "sleep", slept.append)
     assert github.run_gh("api", "graphql").stdout == "ok"
     assert slept == [2]
+
+
+def test_list_decision_fields() -> None:
+    node = _node("example-org/demo", 1)
+    node.update(createdAt="2026-01-01T12:00:00Z", additions=12, deletions=3,
+                reviewDecision="CHANGES_REQUESTED")
+    row = github.pr_from_node(node)
+    assert {key: row[key] for key in ("opened", "additions", "deletions", "review_decision")} == {
+        "opened": "2026-01-01T12:00:00Z", "additions": 12, "deletions": 3,
+        "review_decision": "CHANGES_REQUESTED",
+    }
+    query = github.build_graphql([], [])
+    for field in ("createdAt", "additions", "deletions", "reviewDecision"):
+        assert field in query

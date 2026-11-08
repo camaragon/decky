@@ -60,6 +60,8 @@ Each PR has these fields (snake_case is part of the interface):
 | `checks`                          | `"pass"`, `"fail"`, `"pending"`, or `"none"`                      |
 | `review_decision`                 | `"APPROVED"`, `"CHANGES_REQUESTED"`, `"REVIEW_REQUIRED"`, or null |
 | `updated_at`                      | GitHub timestamp string (UTC ISO 8601)                            |
+| `opened`                          | creation timestamp string (UTC ISO 8601), or `""` if unknown      |
+| `additions`, `deletions`          | integers: lines added/removed, or null if unknown                 |
 | `labels`                          | array of label-name strings                                       |
 
 Consumers should check `version` and tolerate additional fields. Incompatible
