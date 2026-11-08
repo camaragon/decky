@@ -134,5 +134,6 @@ export const fetchInbox = () => api<InboxResponse>("/api/inbox");
 export const sendAnswer = (stack: InboxStack, scope: "pr" | "stack", decision: "merge" | "hold", note: string) =>
   api<{ message: string }>("/api/inbox/decision", {
     method: "POST",
+    headers: { "Content-Type": "application/json", "X-Requested-With": "fetch" },
     body: JSON.stringify({ repo: stack.repo, numbers: stack.prs.map(p => p.number), head_shas: stack.prs.map(p => p.head_sha), scope, decision, note }),
   });

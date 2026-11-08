@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import click
 
@@ -22,6 +23,13 @@ log = logging.getLogger(__name__)
 
 STATIC = Path(__file__).parent / "static"
 PROXY_ROUTES = {
+    ("GET", "/api/meta"),
+    ("GET", "/api/config"),
+    ("GET", "/api/tables/review"),
+    ("GET", "/api/tables/team"),
+    ("GET", "/api/tables/mine"),
+    ("GET", "/api/queue"),
+    ("GET", "/api/status"),
     ("GET", "/api/inbox"),
     ("GET", "/api/inbox/image"),
     ("POST", "/api/inbox/decision"),
@@ -63,15 +71,36 @@ def create_app(
             if api:
                 return JSONResponse({"message": "host not allowed"}, status_code=421)
             return await call_next(request)
+        if request.method == "POST" and path == "/api/inbox/decision":
+            origins = request.headers.getlist("origin")
+            origin = urlsplit(origins[0]) if len(origins) == 1 else None
+            if (
+                origin is None
+                or origin.scheme not in {"http", "https"}
+                or origin.netloc.lower() != request.headers.get("host", "").lower()
+                or request.headers.get("sec-fetch-site") not in {None, "same-origin"}
+                or request.headers.get("x-requested-with") != "fetch"
+            ):
+                return JSONResponse(
+                    {"message": "Inbox answers require a same-origin request"}, status_code=403
+                )
         if (request.method, path) in PROXY_ROUTES or (
             request.method in {"GET", "HEAD"} and not api and not path.startswith("/mcp")
         ):
             return await call_next(request)
-        return JSONResponse({"message": "not available through a proxy host"}, status_code=403)
+        return JSONResponse(
+            {"message": "This action is unavailable through an allowed proxy host; use local access."},
+            status_code=403,
+        )
 
     @app.exception_handler(click.ClickException)
     @app.exception_handler(ActionFailed)
-    async def action_failed(_request: Request, exc: ActionFailed):
+    async def action_failed(request: Request, exc: ActionFailed):
+        if not local_host(request) and proxy_host(request):
+            return JSONResponse(
+                {"message": "Unable to load data; check the server configuration locally."},
+                status_code=422,
+            )
         return JSONResponse({"message": str(exc)}, status_code=422)
 
     @app.exception_handler(StarletteHTTPException)

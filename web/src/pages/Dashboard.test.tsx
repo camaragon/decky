@@ -104,7 +104,8 @@ it.each([ReviewsPage, MyPrsPage])(
   },
 );
 
-it("shows initial status failure and recovers on retry", async () => {
+it("shows status failures and blocked actions without breaking the page", async () => {
+  vi.spyOn(api, "postOpenUrl").mockRejectedValue(new Error("This action is unavailable through an allowed proxy host; use local access."));
   vi.spyOn(api, "fetchStatus")
     .mockRejectedValueOnce(new Error("status.command cannot launch"))
     .mockResolvedValue({
@@ -125,4 +126,7 @@ it("shows initial status failure and recovers on retry", async () => {
   expect(await screen.findByRole("alert")).toHaveTextContent("status.command cannot launch");
   await userEvent.click(screen.getByText("Retry status"));
   expect(await screen.findByText("Ready for input")).toBeInTheDocument();
+  await userEvent.click(screen.getByText("Ready for input"));
+  expect(await screen.findByRole("alert")).toHaveTextContent("use local access");
+  expect(screen.getByText("Ready for input")).toBeInTheDocument();
 });

@@ -105,7 +105,7 @@ def _configured(key: str) -> bool:
 
 
 @router.get("/meta")
-def meta() -> dict:
+def meta(request: Request) -> dict:
     try:
         jira, _ = config.resolve("jira.browse_url")
     except click.ClickException:
@@ -114,7 +114,11 @@ def meta() -> dict:
         "reviewConfigured": _configured("review.command"),
         "queueConfigured": _configured("queue.command"),
         "statusConfigured": _configured("status.command"),
-        "jiraBrowseUrl": jira if isinstance(jira, str) and jira.strip() else None,
+        "jiraBrowseUrl": jira
+        if isinstance(jira, str)
+        and jira.strip()
+        and (local_host(request) or not views.browse_url_has_credentials(jira))
+        else None,
     }
 
 
@@ -176,8 +180,11 @@ def open_url(body: UrlBody, request: Request) -> dict:
 
 
 @router.get("/config")
-def get_config() -> dict:
-    return {"path": str(config.config_path()), "settings": views.config_settings()}
+def get_config(request: Request) -> dict:
+    return {
+        "path": str(config.config_path()),
+        "settings": views.config_settings(redact=not local_host(request)),
+    }
 
 
 class ValueBody(BaseModel):
